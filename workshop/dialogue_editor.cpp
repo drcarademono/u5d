@@ -1,3 +1,4 @@
+#include "text_preview.h"
 #include "dialogue_editor.h"
 #include <memory>
 using namespace Dialogue;
@@ -26,10 +27,7 @@ static QPixmap dosFontPreview(const QByteArray &font, const QString &text) {
     for (auto paragraph : text.split('\n')) {
         for (auto word : paragraph.split(' ', Qt::SkipEmptyParts)) {
             while (word.size() > 18) {
-                if (!line.isEmpty()) {
-                    lines << line;
-                    line.clear();
-                }
+                if (!line.isEmpty()) { lines << line; line.clear(); }
                 lines << word.left(18);
                 word = word.mid(18);
             }
@@ -37,27 +35,15 @@ static QPixmap dosFontPreview(const QByteArray &font, const QString &text) {
                 lines << line;
                 line.clear();
             }
-            if (!line.isEmpty())
-                line += ' ';
+            if (!line.isEmpty()) line += ' ';
             line += word;
         }
         lines << line;
         line.clear();
     }
-    QImage image(18 * 8, qMax(1, int(lines.size())) * 8, QImage::Format_RGB32);
-    image.fill(Qt::black);
-    for (int row = 0; row < lines.size(); ++row)
-        for (int col = 0; col < lines[row].size(); ++col) {
-            int glyph = lines[row][col].unicode() & 127;
-            for (int y = 0; y < 8; ++y) {
-                int bits = static_cast<unsigned char>(font[glyph * 8 + y]);
-                for (int x = 0; x < 8; ++x)
-                    if (bits & (128 >> x))
-                        image.setPixel(col * 8 + x, row * 8 + y, qRgb(255, 255, 255));
-            }
-        }
-    return QPixmap::fromImage(image.scaled(image.width() * 3, image.height() * 3,
-                                           Qt::IgnoreAspectRatio, Qt::FastTransformation));
+    auto preview = Workshop::previewText(font, lines.join("\n"), Workshop::FontMode::Normal);
+    return QPixmap::fromImage(preview.image.scaled(preview.image.width()*3, preview.image.height()*3,
+        Qt::IgnoreAspectRatio, Qt::FastTransformation));
 }
 ConversationEditor::ConversationEditor(
     Project *p, const QString &r, std::function<void(const QByteArray &, const QString &)> cb,

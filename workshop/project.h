@@ -24,6 +24,7 @@ struct ModDiagnostic {
     enum Severity { Information, Warning, Error };
     Severity severity;
     QString resource, message;
+    QString entryId = "resource"; // Stable document-relative ID; never a display label.
 };
 QVector<ModDiagnostic> validateMod(const Project &project);
 // Produces a new, private runtime. No original data, Mods or saves are written.

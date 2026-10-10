@@ -68,7 +68,7 @@ drafts rather than silently discarding them. Package imports become undoable edi
 | Combat setup | Edit starting party positions for four directions, monster tiles/positions, triggers and changed-tile metadata; retain all padding/sentinel bytes |
 | Graphics | All DOS `.16` image containers and 512 tiles; thumbnail gallery, EGA pixel painting, PNG import/export, full tilesheet import/export, one-bit alpha masks |
 | Conversations | Searchable NPCs, Basics/Topics/Questions outline, shared keyword aliases, ordered text/action forms, reference-safe question deletion, byte budgets, diagnostics, Advanced source, conversation sandbox and DOS font preview |
-| Story | Twenty fixed-offset text pages; original capacity, offsets, padding and terminators retained |
+| Story | Twenty fixed-offset text pages; original capacity, offsets, padding and terminators retained; normal, runic and proportional font previews |
 | Starting state | Party position, time, supplies, plot items, reagents, moonstones, shrine/dungeon flags, Shadowlord settings; sixteen character records, statistics/equipment, safe party joining/removal |
 | Resource inspector | Paged hex editing, per-edit undo, importing outputs from the Python editors, reverting a resource; other resource types remain available here |
 
@@ -293,3 +293,17 @@ and expanded viewports. Starting object edits require a new game; `UNDER.OOL`
 overrides `INIT.OOL`, and existing saves retain their own objects. Package Preview
 explains these rules and warns about unsupported DOS overlay table edits. See
 [world-resource compatibility](../docs/mod-packages.md#world-maps-and-starting-objects).
+
+### Shared resource editor foundation
+
+The Resource Library uses friendly names for audited resources. Search also accepts
+original filenames. Resources awaiting dedicated editors show their availability
+and known entries; double-click an entry to inspect its byte span. Advanced byte
+edits use the same undo history and project/package storage as visual editors.
+Unknown layouts remain inspectable without rewriting surrounding bytes.
+
+Story previews can use normal, runic or proportional game fonts. Non-ASCII
+characters are highlighted rather than converted silently. Proportional previews
+need the original `PROPORT.PCS` in the game directory; Workshop reads it without
+including it in a package. Font previews are approximate and do not reproduce full
+scene layout or expand format-specific control tokens.

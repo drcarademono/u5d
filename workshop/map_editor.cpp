@@ -1,3 +1,4 @@
+#include "resource_document.h"
 #include "map_editor.h"
 #include "../src/tiles.h"
 #include "dialogue.h"
@@ -5,9 +6,7 @@
 using U5::require;
 
 bool MapDocument::supported(const QString &r) {
-    return r.endsWith(".CBT") || QStringList{"BRIT.DAT",   "UNDER.DAT", "TOWNE.DAT",
-                                             "CASTLE.DAT", "KEEP.DAT",  "DWELLING.DAT"}
-                                     .contains(r);
+    return Workshop::capability(r).editor == Workshop::EditorKind::Map;
 }
 MapDocument::MapDocument(Project *p, const QString &r) : project(p), resource(r) {
     pages = U5::mapPages(resource, project->data(resource));

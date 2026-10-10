@@ -1,3 +1,4 @@
+#include "resource_document.h"
 #include "project.h"
 #include "dialogue.h"
 #include "mod/package.h"
@@ -57,48 +58,7 @@ void Project::validate() const {
     for (const auto &name : changed()) {
         const auto &b = data(name);
         require(!b.isEmpty() && b.size() <= MOD_MAX_RESOURCE, "Invalid resource size: " + name);
-        if (name.endsWith(".16"))
-            U5::readGraphics(name, b);
-        else if (name.endsWith(".TLK")) {
-            auto entries = U5::readDialogue(b);
-            auto originals = U5::readDialogue(resources[name].original);
-            for (auto e : entries) {
-                U5::validateText(e.bytes);
-                bool unchanged = false;
-                for (auto original : originals)
-                    if (original.id == e.id && original.bytes == e.bytes)
-                        unchanged = true;
-                if (!unchanged)
-                    for (auto issue : Dialogue::parse(e.bytes).issues())
-                        require(!issue.error, name + ": " + issue.message);
-            }
-            U5::writeDialogue(entries);
-        } else if (name.endsWith(".NPC"))
-            require(b.size() == 4608, "NPC schedules must be 4608 bytes");
-        else if (name == "INIT.GAM")
-            require(b.size() == 4192, "INIT.GAM must be 4192 bytes");
-        else if (name == "INIT.OOL" || name == "BRIT.OOL" || name == "UNDER.OOL")
-            require(b.size() == U5_WORLD_OBJECT_SIZE,
-                    name + ": world objects must contain 32 eight-byte records");
-        else if (name == "STORY.DAT")
-            U5::storyPages(b);
-        else if (name == "BRIT.DAT" || name == "DATA.OVL") {
-            const auto &overlay = data("DATA.OVL");
-            const uint8_t *index = U5_BritanniaDefaultIndex;
-            if (resources["DATA.OVL"].original != overlay) {
-                require(overlay.size() >= int(U5_WORLD_INDEX_OFFSET + U5_WORLD_INDEX_SIZE),
-                        "DATA.OVL is missing its Britannia chunk index");
-                index = reinterpret_cast<const uint8_t *>(overlay.constData()) + U5_WORLD_INDEX_OFFSET;
-            }
-            require(U5_ValidBritanniaIndex(index, data("BRIT.DAT").size()),
-                    "Britannia chunk index references missing/truncated BRIT.DAT chunks");
-            U5::worldMap("BRIT.DAT", data("BRIT.DAT"), overlay);
-        }
-        else if (name == "UNDER.DAT")
-            U5::worldMap(name, b, QByteArray());
-        else if (name.endsWith(".CBT") ||
-                 QStringList{"TOWNE.DAT", "KEEP.DAT", "CASTLE.DAT", "DWELLING.DAT"}.contains(name))
-            U5::mapPages(name, b);
+        Workshop::validateResource(*this, name);
     }
 }
 static void append32(QByteArray &b, unsigned v) {
@@ -291,6 +251,8 @@ QVector<ModDiagnostic> validateMod(const Project &project) {
                        QString("Package replaces this entire resource (%1 bytes → %2 bytes).")
                            .arg(project.resources[name].original.size())
                            .arg(project.data(name).size())});
+        if (name.endsWith(".HCS"))
+            result.append({ModDiagnostic::Warning, name, Workshop::capability(name).status});
         if (name == "INIT.GAM" || name == "INIT.OOL" || name == "BRIT.OOL" || name == "UNDER.OOL")
             result.append({ModDiagnostic::Information, name,
                            "Applies to new games only. Existing saves keep their saved party and object state. "

@@ -1,3 +1,6 @@
+#include <limits>
+#include "resource_document.h"
+#include "text_preview.h"
 #include "dialogue.h"
 #include "dialogue_editor.h"
 #include "mod/package.h"
@@ -52,6 +55,109 @@ int main(int argc, char **argv) {
         std::cout << "PASS " << name << "\n";
     };
     try {
+        test("Shared resource documents preserve bytes and stable identities", [] {
+            QTemporaryDir dir;
+            auto p = fixture(dir.path());
+            file(dir.path() + "/INIT.OOL", QByteArray(256, 3));
+            p.openGame(dir.path());
+            Workshop::ResourceDocument document(p, "init.ool");
+            auto entry = document.entries()[2];
+            check(entry.id == "object/2" && document.id() == "INIT.OOL",
+                  "Unstable document identity");
+            check(document.replace(entry, document.read(entry))["INIT.OOL"] == p.data("INIT.OOL"),
+                  "No-op altered bytes");
+            auto changes = document.replace(entry, QByteArray(8, 9));
+            check(changes["INIT.OOL"].left(16) == QByteArray(16, 3) &&
+                      changes["INIT.OOL"].mid(24) == QByteArray(232, 3),
+                  "Unknown bytes lost");
+            rejects(
+                [&] { document.read({"bad", "Bad", std::numeric_limits<qsizetype>::max(), 8}); });
+            rejects([&] { document.replace(entry, QByteArray(9, 1)); });
+            p.resources["INIT.OOL"].edited = changes["INIT.OOL"];
+            check(document.read(entry) == QByteArray(8, 9), "Document kept stale state");
+            p.save(dir.path() + "/document.imperaproj");
+            Project loaded;
+            loaded.load(dir.path() + "/document.imperaproj");
+            check(loaded.data("INIT.OOL") == p.data("INIT.OOL"), "Project round trip failed");
+            auto package = p.package();
+            p.resources["INIT.OOL"].edited = p.resources["INIT.OOL"].original;
+            p.importPackage(package);
+            check(document.read(entry) == QByteArray(8, 9), "Package round trip failed");
+            p.resources["INIT.OOL"].edited.resize(255);
+            rejects([&] { document.entries(); });
+            check(Workshop::capability("UNKNOWN.DAT").editor == Workshop::EditorKind::Inspector,
+                  "Unknown file lost inspection");
+        });
+        test("Resource registry and inspector navigation", [] {
+            QTemporaryDir dir;
+            auto p = fixture(dir.path());
+            file(dir.path() + "/INIT.OOL", QByteArray(256, 3));
+            WorkshopWindow window;
+            window.openGame(dir.path());
+            window.selectResource("INIT.OOL");
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            auto entries = window.findChild<QListWidget *>("resourceEntries");
+            check(entries && entries->count() == 32, "Resource shell missing stable entries");
+            check(entries->item(2)->data(Qt::UserRole).toString() == "INIT.OOL/object/2",
+                  "Navigation uses display labels");
+            QMetaObject::invokeMethod(entries, "itemDoubleClicked", Qt::DirectConnection,
+                                      Q_ARG(QListWidgetItem *, entries->item(2)));
+            auto offset = window.findChild<QSpinBox *>("resourceByteOffset");
+            check(offset && offset->value() == 16, "Entry did not navigate to byte span");
+            auto table = window.findChild<QTableWidget *>("byteInspector");
+            check(table, "Inspector absent");
+            table->item(0, 0)->setText("09");
+            check(window.projectForTests().data("INIT.OOL")[16] == 9, "Raw edit not committed");
+            for (auto action : window.findChildren<QAction *>())
+                if (action->text().startsWith("Undo ")) {
+                    action->trigger();
+                    break;
+                }
+            QApplication::processEvents();
+            check(window.projectForTests().data("INIT.OOL")[16] == 3, "Document undo failed");
+        });
+        test("Original proportional font compatibility (optional)", [] {
+            auto directory = qEnvironmentVariable("U5_GAME_DIR");
+            if (directory.isEmpty())
+                return;
+            QString path;
+            for (auto name : QDir(directory).entryList(QDir::Files))
+                if (name.compare("PROPORT.PCS", Qt::CaseInsensitive) == 0)
+                    path = QDir(directory).filePath(name);
+            if (path.isEmpty())
+                return;
+            QFile font(path);
+            check(font.open(QIODevice::ReadOnly), "Cannot read optional font");
+            auto preview = Workshop::previewText(U5::decompress(font.readAll()), "The Avatar",
+                                                 Workshop::FontMode::Proportional);
+            check(preview.issues.isEmpty(), "Original proportional font incompatible");
+        });
+        test("Shared font previews reject corruption and unsupported glyphs", [] {
+            QByteArray normal(1024, char(0xff));
+            auto preview =
+                Workshop::previewText(normal, QString::fromUtf8("Aé"), Workshop::FontMode::Normal);
+            check(!preview.issues.isEmpty(), "Unsupported Unicode silently aliased");
+            check(Workshop::previewText(normal, "A", Workshop::FontMode::Runic).issues.isEmpty(),
+                  "Runic font rejected");
+            rejects(
+                [&] { Workshop::previewText(normal.left(1023), "A", Workshop::FontMode::Normal); });
+            QByteArray proportional(8, 0);
+            U5::setWord(proportional, 0, 1);
+            U5::setWord(proportional, 2, 4);
+            U5::setWord(proportional, 4, 3);
+            U5::setWord(proportional, 6, 1);
+            rejects([&] {
+                Workshop::previewText(proportional, " ", Workshop::FontMode::Proportional);
+            });
+            proportional.append(char(0xe0));
+            check(Workshop::previewText(proportional, " ", Workshop::FontMode::Proportional)
+                      .issues.isEmpty(),
+                  "Valid proportional glyph rejected");
+            U5::setWord(proportional, 4, 0);
+            check(Workshop::previewText(proportional, " ", Workshop::FontMode::Proportional)
+                      .issues.isEmpty(),
+                  "Blank proportional space rejected");
+        });
         test("Export Britannia package for engine integration", [] {
             QTemporaryDir dir;
             auto project = fixture(dir.path());
@@ -68,7 +174,8 @@ int main(int argc, char **argv) {
             changed[U5_WORLD_INDEX_OFFSET + 255] = 0;
             auto package = project.package();
             Project loaded;
-            loaded.openGame(dir.path());loaded.importPackage(package);
+            loaded.openGame(dir.path());
+            loaded.importPackage(package);
             check(loaded.data("DATA.OVL") == changed, "World package round trip");
             // Optional bridge to save_slots_test's production world-loader test.
             if (qEnvironmentVariableIsSet("IMPERA_WORLD_TEST_PACKAGE"))

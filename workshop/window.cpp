@@ -1,3 +1,5 @@
+#include "text_preview.h"
+#include "resource_document.h"
 #include "window.h"
 #include "dialogue_editor.h"
 #include "mod/package.h"
@@ -329,7 +331,8 @@ WorkshopWindow::WorkshopWindow() {
             bool visible = false;
             for (int j = 0; j < group->childCount(); j++) {
                 auto item = group->child(j);
-                bool match = item->text(0).contains(query, Qt::CaseInsensitive);
+                bool match = item->text(0).contains(query, Qt::CaseInsensitive) ||
+                    item->data(0, Qt::UserRole).toString().contains(query, Qt::CaseInsensitive);
                 item->setHidden(!match);
                 visible |= match;
             }
@@ -468,25 +471,15 @@ void WorkshopWindow::rebuildTree() {
     assets->clear();
     QMap<QString, QTreeWidgetItem *> groups;
     for (auto it = project.resources.begin(); it != project.resources.end(); ++it) {
-        QString name = it.key(),
-                group = name.endsWith(".16")    ? "Artwork"
-                        : name.endsWith(".TLK") ? "Conversations"
-                        : name.endsWith(".NPC") ? "NPC schedules"
-                        : name == "INIT.GAM"    ? "Starting state"
-                        : name == "STORY.DAT"   ? "Story"
-                        : name.endsWith(".CBT") ||
-                                QStringList{"BRIT.DAT",     "UNDER.DAT", "TOWNE.DAT",
-                                            "DWELLING.DAT", "KEEP.DAT",  "CASTLE.DAT"}
-                                    .contains(name)
-                            ? "Maps"
-                            : "Other resources";
+        QString name = it.key(), group = Workshop::capability(name).group;
         if (!groups.contains(group)) {
             groups[group] = new QTreeWidgetItem(assets, {group});
             groups[group]->setExpanded(true);
         }
         auto item =
-            new QTreeWidgetItem(groups[group], {name + (it->edited != it->original ? "  •" : "")});
+            new QTreeWidgetItem(groups[group], {Workshop::capability(name).title + (it->edited != it->original ? "  •" : "")});
         item->setData(0, Qt::UserRole, name);
+        item->setToolTip(0, name + "\n" + Workshop::capability(name).status);
         if (name == current)
             assets->setCurrentItem(item);
     }
@@ -573,25 +566,46 @@ QWidget *WorkshopWindow::resourceEditor(const QString &name) {
     for (auto action : menuBar()->actions())
         if (action->text() == "Resource Library")
             action->setChecked(!name.endsWith(".TLK") && !MapDocument::supported(name));
-    if (name.endsWith(".16"))
+    const auto kind = Workshop::capability(name).editor;
+    if (kind == Workshop::EditorKind::Artwork)
         editor = graphicsEditor(name);
-    else if (name.endsWith(".TLK"))
+    else if (kind == Workshop::EditorKind::Conversation)
         editor = dialogueEditor(name);
-    else if (name == "STORY.DAT")
+    else if (kind == Workshop::EditorKind::Story)
         editor = storyEditor();
-    else if (name == "INIT.GAM")
+    else if (kind == Workshop::EditorKind::State)
         editor = stateEditor();
-    else if (name.endsWith(".NPC"))
+    else if (kind == Workshop::EditorKind::Schedule)
         editor = npcEditor(name);
-    else if (name.endsWith(".CBT") || QStringList{"BRIT.DAT", "UNDER.DAT", "TOWNE.DAT",
-                                                  "CASTLE.DAT", "KEEP.DAT", "DWELLING.DAT"}
-                                          .contains(name)) {
+    else if (kind == Workshop::EditorKind::Map) {
         editor = mapEditor(name);
         if (name.endsWith(".CBT"))
             tabs->addTab(combatEditor(name), "Combat setup");
     }
+    if (!editor) {
+        QVBoxLayout *layout;
+        editor = panel(&layout);
+        const auto info = Workshop::capability(name);
+        layout->addWidget(hint(info.title + "\n" + info.status));
+        auto entries = new QListWidget;
+        entries->setObjectName("resourceEntries");
+        entries->setToolTip("Stable entries in this resource. Raw edits are available in Resource inspector.");
+        Workshop::ResourceDocument document(project, name);
+        for (const auto &entry : document.entries()) {
+            auto item = new QListWidgetItem(entry.title, entries);
+            item->setData(Qt::UserRole, document.id() + "/" + entry.id);
+            item->setData(Qt::UserRole + 1, entry.offset);
+            item->setToolTip(QString("Offset %1; %2 bytes").arg(entry.offset).arg(entry.length));
+        }
+        layout->addWidget(entries);
+        connect(entries, &QListWidget::itemDoubleClicked, tabs, [tabs](QListWidgetItem *item) {
+            tabs->setCurrentIndex(tabs->count()-1);
+            if (auto offset = tabs->findChild<QSpinBox *>("resourceByteOffset"))
+                offset->setValue(item->data(Qt::UserRole + 1).toInt());
+        });
+    }
     if (editor)
-        tabs->insertTab(0, editor, "Visual editor");
+        tabs->insertTab(0, editor, kind == Workshop::EditorKind::Inspector ? "Resource overview" : "Visual editor");
     tabs->addTab(bytesEditor(name), "Resource inspector");
     tabs->setCurrentIndex(0);
     return tabs;
@@ -809,6 +823,7 @@ QWidget *WorkshopWindow::storyEditor() {
     layout->addWidget(choice);
     auto text = new QPlainTextEdit;
     layout->addWidget(text, 1);
+    layout->addWidget(Workshop::textPreviewPanel(&project, text));
     auto budget = new QLabel;
     layout->addWidget(budget);
     auto load = [=] {
@@ -818,7 +833,7 @@ QWidget *WorkshopWindow::storyEditor() {
     auto count = [=] {
         int i = choice->currentIndex();
         budget->setText(QString("%1 / %2 ASCII bytes")
-                            .arg(text->toPlainText().size())
+                            .arg(QString(text->toPlainText()).replace("\n", "\r\n").size())
                             .arg(originalPages[i].size()));
     };
     load();
@@ -1222,6 +1237,7 @@ QWidget *WorkshopWindow::bytesEditor(const QString &name) {
     auto w = panel(&layout);
     auto row = new QHBoxLayout;
     auto offset = new QSpinBox;
+    offset->setObjectName("resourceByteOffset");
     offset->setRange(0, qMax(0, int(project.data(name).size()) - 1));
     offset->setDisplayIntegerBase(16);
     offset->setPrefix("0x");
@@ -1336,13 +1352,15 @@ bool WorkshopWindow::reviewPackage(bool launch) {
                                                                                          : "Info",
                                          diagnostic.resource, diagnostic.message});
         item->setToolTip(2, diagnostic.message);
+        item->setData(0, Qt::UserRole, diagnostic.resource);
+        item->setData(0, Qt::UserRole + 1, diagnostic.entryId);
     }
     report->setWordWrap(true);
     layout->addWidget(report, 1);
     connect(report, &QTreeWidget::itemDoubleClicked, &dialog,
             [this, &dialog](QTreeWidgetItem *item) {
-                if (project.resources.contains(item->text(1))) {
-                    selectResource(item->text(1));
+                if (project.resources.contains(item->data(0, Qt::UserRole).toString())) {
+                    selectResource(item->data(0, Qt::UserRole).toString());
                     dialog.reject();
                 }
             });

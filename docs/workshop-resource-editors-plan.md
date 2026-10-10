@@ -1,6 +1,6 @@
 # Workshop resource editors: implementation plan
 
-Status: Phase 1 implemented; Phases 2–9 remain proposals. Continue on `feature/native-modding` unless
+Status: Phases 1–2 implemented; Phases 3–9 remain proposals. Continue on `feature/native-modding` unless
 instructed otherwise. This extends the [Other Resources audit](workshop-other-resources-audit.md)
 and existing [map workspace plan](workshop-map-ui.md).
 
@@ -164,6 +164,33 @@ Use precise minimum-engine requirements once a package depends on new support;
 do not assign a release version until that version is actually chosen.
 
 ## Phase 2 — Shared codecs, validation and editor shell
+
+Implemented: `resource_document` centralizes resource capabilities, editor routing,
+map support and existing validation hooks. Live documents read Project state and
+produce validated byte-preserving change sets for the existing undo stack; they
+never keep a second authoritative buffer. Known font glyphs and world-object
+records have stable entry IDs and checked byte spans. Other layouts remain whole
+resource entries until their format-specific codecs are implemented.
+
+The resource shell explains editor availability and exposes entries that open the
+byte inspector at their offsets. Navigation retains resource/entry IDs separately
+from display names; diagnostics retain the same document identity. Unknown and
+malformed files remain inspectable. Search accepts both friendly names and filenames.
+
+Shared bounded text previews support normal, runic and decoded proportional fonts.
+The story editor exposes all three modes and highlights non-ASCII characters;
+conversation previews reuse the normal renderer and retain their 18-column wrapping.
+PROPORT.PCS is read only from the game directory, not exported. Previews are
+approximate: scene justification, token expansion and artwork boundaries remain
+format-specific responsibilities for subsequent phases. Missing fonts show an
+explanation rather than substituted artwork. Existing encoders remain authoritative.
+
+Synthetic tests cover preserved surrounding bytes, unchanged round trips, truncated
+fonts/records, offset overflow, stable inspector navigation, undo, project reopen
+and package import/export. Dedicated semantic editors for the audited resources
+remain in Phases 3–9; this phase does not claim those layouts are fully validated.
+
+Original phase requirements:
 
 Add the capability registry and document interfaces before multiplying widgets.
 Extract shared presentation helpers without a broad rewrite of working editors.
