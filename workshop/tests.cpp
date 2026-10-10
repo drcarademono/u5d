@@ -1392,16 +1392,17 @@ int main(int argc, char **argv) {
                   "Selected NPC must not redefine map-wide schedule labels");
         });
         test("Verified tile descriptions, category search and document-only exports", [&] {
-            check(MapDocument::tileName(5) == "Grass" && MapDocument::tileCategory(5) == "Nature",
+            check(MapDocument::tileName(5) == "Grass" && MapDocument::tileCategory(5) == "Ground",
                   "Verified grass label/category missing");
             check(MapDocument::tileName(0x4f) == "Wall" &&
-                      MapDocument::tileCategory(0x4f) == "Walls and passages",
+                      MapDocument::tileCategory(0x4f) == "Buildings",
                   "Verified wall category missing");
             check(MapDocument::tileName(6) == "Grass variation" &&
-                      MapDocument::tileCategory(6) == "Nature",
+                      MapDocument::tileCategory(6) == "Ground",
                   "Grass variation missing from catalog");
             for (int id = 0; id < 256; ++id)
-                check(MapDocument::tileCategory(id) != "Uncategorized" &&
+                check(QStringList{"Overworld", "Ground", "Buildings", "Objects", "Other"}.contains(
+                          MapDocument::tileCategory(id)) &&
                           MapDocument::tileName(id) != "Unidentified tile",
                       "Tile catalog is incomplete");
             QTemporaryDir dir;
@@ -1411,6 +1412,14 @@ int main(int argc, char **argv) {
                 for (int x = 0; x < 11; ++x)
                     bytes[y * 32 + x] = char((y * 11 + x) % 256);
             file(dir.path() + "/BRIT.CBT", bytes);
+            QByteArray worldChunks(512, char(0xfa));
+            worldChunks.replace(0, 256, QByteArray(256, 5));
+            worldChunks[0] = char(0x4f);
+            worldChunks[1] = char(0xd4);
+            QByteArray overlay(0x3986, char(255));
+            overlay[0x3886] = 0;
+            file(dir.path() + "/BRIT.DAT", worldChunks);
+            file(dir.path() + "/DATA.OVL", overlay);
             project.openGame(dir.path());
             MapDocument document(&project, "BRIT.CBT");
             QVector<QImage> tiles;
@@ -1454,9 +1463,39 @@ int main(int argc, char **argv) {
             check(!palette->item(5)->isHidden() && palette->item(0x4f)->isHidden(),
                   "Name search failed");
             search->clear();
-            category->setCurrentText("Walls and passages");
-            check(palette->item(5)->isHidden() && !palette->item(0x4f)->isHidden(),
-                  "Category filter failed");
+            category->setCurrentText("Buildings");
+            check(palette->item(5)->isHidden() && !palette->item(0x50)->isHidden() &&
+                      palette->item(0x4f)->isHidden(),
+                  "Buildings must exclude tiles used on world maps");
+            check(category->count() == 8, "Palette should offer exactly five tile categories");
+            category->setCurrentText("Overworld");
+            check(!palette->item(5)->isHidden() && !palette->item(0x4f)->isHidden() &&
+                      !palette->item(0xd7)->isHidden() && palette->item(0xfa)->isHidden(),
+                  "Overworld filter missed used tiles or counted unused chunk storage");
+            check(palette->item(5)->toolTip().contains("Overworld · Tile") &&
+                      !palette->item(5)->toolTip().contains("Ground"),
+                  "World tile tooltip should show only its exclusive category");
+            category->setCurrentText("Ground");
+            check(palette->item(5)->isHidden() && !palette->item(0x27)->isHidden() &&
+                      palette->item(0x4f)->isHidden(),
+                  "Ground should contain floors and exclude world tiles");
+            category->setCurrentText("Objects");
+            check(!palette->item(0xfa)->isHidden() && palette->item(0x4f)->isHidden(),
+                  "Objects should contain fixtures, not walls");
+            category->setCurrentText("Other");
+            check(!palette->item(0x70)->isHidden() && palette->item(5)->isHidden(),
+                  "Other should contain rendering masks, not terrain");
+            int memberships[256]{};
+            for (const QString &name :
+                 {QString("Overworld"), QString("Ground"), QString("Buildings"), QString("Objects"),
+                  QString("Other")}) {
+                category->setCurrentText(name);
+                for (int id = 0; id < 256; ++id)
+                    memberships[id] += !palette->item(id)->isHidden();
+            }
+            for (int membership : memberships)
+                check(membership == 1, "Every tile must belong to exactly one category");
+
             check(!search->accessibleName().isEmpty() && !category->accessibleName().isEmpty(),
                   "Accessible control labels absent");
         });

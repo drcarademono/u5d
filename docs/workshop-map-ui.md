@@ -334,8 +334,8 @@ lossless-format, editing, undo and package tests continue to pass.
 
 ### Phase 5 outcome
 
-The terrain browser offers name/number search and Nature, Destinations, Walls and
-passages, Hazards, Objects and Rendering masks filters. All 256 terrain tiles
+The terrain browser offers name/number search and Overworld, Ground, Buildings,
+Objects, and Other filters. All 256 terrain tiles
 are cataloged using the engine definitions and an audit of the original DOS
 artwork, including animation frames, wall sections, and masks.
 These categories describe the authoring palette, not collision or visibility
@@ -439,3 +439,9 @@ actions, NPC fields, and encounter controls include explanatory tooltips.
 The tool icon row also contains Copy, Paste, Clear Selection, Highlight
 Changes, and Zoom. Export remains beside the floor/schedule controls. Grid and Rectangle Outline
 are no longer UI options; rectangles are filled and the tile grid is hidden.
+
+Overworld includes small location icons and all tile IDs present in the decoded
+Britannia and Underworld maps, including original and edited terrain and animation
+frames. Unused chunk storage is excluded. Categories are exclusive: world-map usage takes priority. Remaining tiles go
+under Ground (terrain/floor surfaces), Buildings (structural components), Objects
+(furniture/fixtures/scenery), or Other (effects and rendering masks).
