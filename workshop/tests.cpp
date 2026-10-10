@@ -1465,20 +1465,19 @@ int main(int argc, char **argv) {
             search->clear();
             category->setCurrentText("Buildings");
             check(palette->item(5)->isHidden() && !palette->item(0x50)->isHidden() &&
-                      palette->item(0x4f)->isHidden(),
-                  "Buildings must exclude tiles used on world maps");
+                      !palette->item(0x4f)->isHidden(),
+                  "Buildings should include structural tiles also used on world maps");
             check(category->count() == 8, "Palette should offer exactly five tile categories");
             category->setCurrentText("Overworld");
             check(!palette->item(5)->isHidden() && !palette->item(0x4f)->isHidden() &&
                       !palette->item(0xd7)->isHidden() && palette->item(0xfa)->isHidden(),
                   "Overworld filter missed used tiles or counted unused chunk storage");
-            check(palette->item(5)->toolTip().contains("Overworld · Tile") &&
-                      !palette->item(5)->toolTip().contains("Ground"),
-                  "World tile tooltip should show only its exclusive category");
+            check(palette->item(5)->toolTip().contains("Overworld · Ground"),
+                  "World tile tooltip should describe both categories");
             category->setCurrentText("Ground");
-            check(palette->item(5)->isHidden() && !palette->item(0x27)->isHidden() &&
+            check(!palette->item(5)->isHidden() && !palette->item(0x27)->isHidden() &&
                       palette->item(0x4f)->isHidden(),
-                  "Ground should contain floors and exclude world tiles");
+                  "Ground should include terrain and floors, including world tiles");
             category->setCurrentText("Objects");
             check(!palette->item(0xfa)->isHidden() && palette->item(0x4f)->isHidden(),
                   "Objects should contain fixtures, not walls");
@@ -1487,14 +1486,14 @@ int main(int argc, char **argv) {
                   "Other should contain rendering masks, not terrain");
             int memberships[256]{};
             for (const QString &name :
-                 {QString("Overworld"), QString("Ground"), QString("Buildings"), QString("Objects"),
-                  QString("Other")}) {
+                 {QString("Ground"), QString("Buildings"), QString("Objects"), QString("Other")}) {
                 category->setCurrentText(name);
                 for (int id = 0; id < 256; ++id)
                     memberships[id] += !palette->item(id)->isHidden();
             }
             for (int membership : memberships)
-                check(membership == 1, "Every tile must belong to exactly one category");
+                check(membership == 1, "Each tile must have exactly one base category in addition "
+                                       "to optional Overworld membership");
 
             check(!search->accessibleName().isEmpty() && !category->accessibleName().isEmpty(),
                   "Accessible control labels absent");

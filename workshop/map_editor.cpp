@@ -1023,6 +1023,11 @@ MapWorkspace::MapWorkspace(
     tools->insertWidget(tools->count() - 1, comparison);
     tools->addWidget(zoom);
     canvas = new MapCanvas;
+    // The small location icons are intended for world maps, including unused ruins.
+    for (int id = TILE_MAP_HUT; id <= TILE_MAP_LIGHTHOUSE; ++id)
+        overworldTiles.insert(id);
+    overworldTiles.insert(TILE_MAP_PALACEBT);
+    overworldTiles.insert(TILE_MAP_CASTLELB);
     for (const QString &name : {QString("BRIT.DAT"), QString("UNDER.DAT")}) {
         if (!project->resources.contains(name))
             continue;
@@ -1125,7 +1130,8 @@ MapWorkspace::MapWorkspace(
         "Your favorite brushes.",
         "Recently used brushes.",
         "Tiles used in Britannia or the Underworld, including their animation frames. Also "
-        "includes small world-map location icons. Each tile belongs to exactly one category.",
+        "includes small world-map location icons. Overworld can overlap Ground, Buildings, "
+        "Objects, or Other.",
         "Terrain and floor surfaces: water, grass, roads, forests, rock, lava, carpets, and "
         "paving.",
         "Building components: walls, towers, doors, windows, bridges, stairs, and ladders.",
@@ -1166,7 +1172,7 @@ MapWorkspace::MapWorkspace(
         item->setToolTip(QString("%1\n%2 · Tile %3 (0x%4)\nDescription from DOS artwork and engine "
                                  "definitions; appearance may differ with custom artwork.")
                              .arg(MapDocument::tileName(i))
-                             .arg(paletteCategory(i))
+                             .arg(tileCategories(i).join(" · "))
                              .arg(i)
                              .arg(i, 2, 16, QChar('0')));
     }
@@ -1386,7 +1392,7 @@ void MapWorkspace::setBrush(int id) {
     brushLabel->setText(QString("%1\nTile %2 · %3")
                             .arg(MapDocument::tileName(canvas->brush))
                             .arg(canvas->brush)
-                            .arg(paletteCategory(canvas->brush)));
+                            .arg(tileCategories(canvas->brush).join(" · ")));
     {
         QSignalBlocker block(favorite);
         favorite->setChecked(brushes->favorites.contains(canvas->brush));
@@ -1401,15 +1407,18 @@ void MapWorkspace::setBrush(int id) {
     canvas->update();
     saveView();
 }
-QString MapWorkspace::paletteCategory(int id) const {
-    return overworldTiles.contains(id) ? QString("Overworld") : MapDocument::tileCategory(id);
+QStringList MapWorkspace::tileCategories(int id) const {
+    QStringList categories{MapDocument::tileCategory(id)};
+    if (overworldTiles.contains(id))
+        categories.prepend("Overworld");
+    return categories;
 }
 void MapWorkspace::filterPalette() {
     QString query = tileSearch->text().trimmed();
     for (int i = 0; i < 256; ++i) {
         bool matches =
             query.isEmpty() || MapDocument::tileName(i).contains(query, Qt::CaseInsensitive) ||
-            paletteCategory(i).contains(query, Qt::CaseInsensitive) ||
+            tileCategories(i).join(" ").contains(query, Qt::CaseInsensitive) ||
             QString::number(i).contains(query) ||
             QString("0x%1").arg(i, 2, 16, QChar('0')).contains(query, Qt::CaseInsensitive);
         bool group =
@@ -1417,7 +1426,7 @@ void MapWorkspace::filterPalette() {
             (paletteFilter->currentIndex() < 3
                  ? (paletteFilter->currentIndex() == 1 ? brushes->favorites : brushes->recent)
                        .contains(i)
-                 : paletteCategory(i) == paletteFilter->currentText());
+                 : tileCategories(i).contains(paletteFilter->currentText()));
         palette->item(i)->setHidden(!matches || !group);
     }
 }
@@ -2056,24 +2065,24 @@ const QMap<int, QPair<QString, QString>> &tileCatalog() {
         {TILE_MAP_WATER_3, {"Water 3", "Ground"}},
         {TILE_MAP_POISON, {"Poison", "Ground"}},
         {TILE_MAP_GRASS, {"Grass", "Ground"}},
-        {TILE_MAP_HUT, {"Hut", "Overworld"}},
-        {TILE_MAP_CODEX, {"Codex", "Overworld"}},
-        {TILE_MAP_KEEP, {"Keep", "Overworld"}},
-        {TILE_MAP_VILLAGE, {"Village", "Overworld"}},
-        {TILE_MAP_TOWNE, {"Town", "Overworld"}},
-        {TILE_MAP_CASTLE, {"Castle", "Overworld"}},
-        {TILE_MAP_CAVE, {"Cave", "Overworld"}},
-        {TILE_MAP_MINE, {"Mine", "Overworld"}},
-        {TILE_MAP_DUNGEON, {"Dungeon", "Overworld"}},
-        {TILE_MAP_SHRINE, {"Shrine", "Overworld"}},
-        {TILE_MAP_RUINS, {"Ruins", "Overworld"}},
-        {TILE_MAP_LIGHTHOUSE, {"Lighthouse", "Overworld"}},
+        {TILE_MAP_HUT, {"Hut", "Buildings"}},
+        {TILE_MAP_CODEX, {"Codex", "Buildings"}},
+        {TILE_MAP_KEEP, {"Keep", "Buildings"}},
+        {TILE_MAP_VILLAGE, {"Village", "Buildings"}},
+        {TILE_MAP_TOWNE, {"Town", "Buildings"}},
+        {TILE_MAP_CASTLE, {"Castle", "Buildings"}},
+        {TILE_MAP_CAVE, {"Cave", "Ground"}},
+        {TILE_MAP_MINE, {"Mine", "Ground"}},
+        {TILE_MAP_DUNGEON, {"Dungeon", "Ground"}},
+        {TILE_MAP_SHRINE, {"Shrine", "Buildings"}},
+        {TILE_MAP_RUINS, {"Ruins", "Buildings"}},
+        {TILE_MAP_LIGHTHOUSE, {"Lighthouse", "Buildings"}},
         {TILE_MAP_STUMP, {"Stump", "Ground"}},
         {TILE_MAP_CROPS_PICKED, {"Crops picked", "Ground"}},
         {TILE_MAP_CROPS, {"Crops", "Ground"}},
         {TILE_MAP_TREE, {"Tree", "Ground"}},
-        {TILE_MAP_PALACEBT, {"Blackthorn’s palace", "Overworld"}},
-        {TILE_MAP_CASTLELB, {"Lord British’s castle", "Overworld"}},
+        {TILE_MAP_PALACEBT, {"Blackthorn’s palace", "Buildings"}},
+        {TILE_MAP_CASTLELB, {"Lord British’s castle", "Buildings"}},
         {TILE_MAP_HIDDEN_DOOR, {"Hidden door", "Buildings"}},
         {TILE_MAP_WALL, {"Wall", "Buildings"}},
         {TILE_MAP_SHELF, {"Shelf", "Objects"}},

@@ -226,8 +226,9 @@ or becomes invalid, use **Open game / New mod** to select it again.
 
 Find terrain tiles by name or number and filter by **Overworld**, **Ground**,
 **Buildings**, **Objects**, or **Other**. Overworld includes tiles used in the
-Britannia and Underworld maps and their animation frames. Each tile belongs to
-exactly one category: world-map usage takes priority over the remaining categories. All 256 terrain tiles
+Britannia and Underworld maps and their animation frames. Overworld can overlap
+Ground, Buildings, Objects, or Other; those four base categories remain exclusive.
+All 256 terrain tiles
 are categorized from engine definitions and the original DOS artwork. The compact
 palette shows artwork only; hover for names, categories, and IDs. Tool icons have
 descriptive tooltips. The labeled NPC schedule selector beside the floor list shows shared start hours

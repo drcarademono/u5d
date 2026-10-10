@@ -442,6 +442,6 @@ are no longer UI options; rectangles are filled and the tile grid is hidden.
 
 Overworld includes small location icons and all tile IDs present in the decoded
 Britannia and Underworld maps, including original and edited terrain and animation
-frames. Unused chunk storage is excluded. Categories are exclusive: world-map usage takes priority. Remaining tiles go
-under Ground (terrain/floor surfaces), Buildings (structural components), Objects
-(furniture/fixtures/scenery), or Other (effects and rendering masks).
+frames. Unused chunk storage is excluded. Overworld overlaps the four exclusive
+base categories: Ground (terrain/floor surfaces), Buildings (structural components),
+Objects (furniture/fixtures/scenery), or Other (effects and rendering masks).

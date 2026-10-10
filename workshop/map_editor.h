@@ -185,7 +185,7 @@ class MapWorkspace : public QWidget {
     MapBrushState localBrushes, *brushes;
     void filterPalette();
     QSet<int> overworldTiles;
-    QString paletteCategory(int id) const;
+    QStringList tileCategories(int id) const;
     void updateSelection();
     QListWidget *palette;
     QTreeWidget *maps;
