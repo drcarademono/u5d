@@ -191,6 +191,9 @@ class MapWorkspace : public QWidget {
     bool restoring = true;
     void saveView();
     void loadPage();
+    int currentPage() const;
+    void populateFloors(int index);
+    void selectPage(int index);
     void setBrush(int id);
     void updateZoom();
     void exportImage(bool ids, bool preview = false);

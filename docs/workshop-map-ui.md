@@ -425,7 +425,9 @@ in the cross-platform release workflow.
 ### Compact map toolbar and palette
 
 Tools are icon buttons with descriptive hover help and accessible names. The NPC
-schedule selector sits beside them. It shows start hours when characters with
+schedule selector is labeled “NPC schedule:” and sits to the right of the floor
+selector. Floor choices are restricted to the current location; clicking a
+location heading in the map tree opens its main floor (ground floor when present). It shows start hours when characters with
 destinations on the current floor share all four timings; otherwise it shows
 changes 1–4. Selecting a character never changes the meaning of these labels.
 The inspector still shows that character’s exact start hour and shared destinations.

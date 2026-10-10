@@ -861,6 +861,13 @@ MapWorkspace::MapWorkspace(
                     if (!locations.contains(location))
                         locations[location] = new QTreeWidgetItem(towns, {location});
                     parentItem = locations[location];
+                    const auto previous = parentItem->data(0, Qt::UserRole + 1);
+                    if (!previous.isValid() ||
+                        std::abs(mp.floor) < std::abs(pages[previous.toInt()].floor)) {
+                        parentItem->setData(0, Qt::UserRole, name);
+                        parentItem->setData(0, Qt::UserRole + 1, i);
+                        parentItem->setToolTip(0, "Open the main floor of " + location);
+                    }
                     label = mp.floor < 0    ? "Basement"
                             : mp.floor == 0 ? "Ground floor"
                                             : QString("Upper floor %1").arg(mp.floor);
@@ -881,13 +888,10 @@ MapWorkspace::MapWorkspace(
     centerLayout->setContentsMargins(0, 0, 0, 0);
     auto row = new QHBoxLayout;
     page = new QComboBox;
-    page->setToolTip(
-        "Switch between maps or floors in this resource; edits and view state are preserved.");
+    page->setToolTip("Switch floors within the current location. Choose another location in the "
+                     "map list; edits and view state are preserved.");
     page->setObjectName("mapPage");
-    for (auto mp : document.pages)
-        page->addItem(mp.name);
-    page->setCurrentIndex(
-        qBound(0, navigation->value(resource + "/map"), int(document.pages.size() - 1)));
+    populateFloors(qBound(0, navigation->value(resource + "/map"), int(document.pages.size() - 1)));
     row->addWidget(page, 1);
     auto exportButton = new QPushButton("Export");
     exportButton->setToolTip("Export terrain, tile IDs, or the visible preview as a PNG.");
@@ -986,9 +990,13 @@ MapWorkspace::MapWorkspace(
                          "when NPCs on this map agree; otherwise changes are numbered 1–4. Changes "
                          "2 and 4 share destinations and behavior.");
     schedule->setSizeAdjustPolicy(QComboBox::AdjustToContents);
-    if (project->resources.contains(companion))
-        tools->addWidget(schedule);
-    else
+    if (project->resources.contains(companion)) {
+        auto scheduleLabel = new QLabel("NPC schedule:");
+        scheduleLabel->setBuddy(schedule);
+        scheduleLabel->setToolTip(schedule->toolTip());
+        row->insertWidget(1, scheduleLabel);
+        row->insertWidget(2, schedule);
+    } else
         schedule->hide();
     tools->addStretch();
     centerLayout->addLayout(tools);
@@ -1217,7 +1225,7 @@ MapWorkspace::MapWorkspace(
             return;
         int index = item->data(0, Qt::UserRole + 1).toInt();
         if (name == resource)
-            page->setCurrentIndex(index);
+            selectPage(index);
         else {
             cancelGesture();
             saveView();
@@ -1225,22 +1233,9 @@ MapWorkspace::MapWorkspace(
             navigate(name);
         }
     });
-    connect(page, &QComboBox::currentIndexChanged, this, [=] {
-        cancelGesture();
-        saveView();
-        int oldPage = navigation->value(resource + "/map");
-        if (canvas->tool == MapCanvas::InspectNpc && canvas->selectedNpc >= 0 &&
-            document.pages[oldPage].settlement == document.pages[page->currentIndex()].settlement) {
-            auto &target = (*states)[resource + "/" + QString::number(page->currentIndex())];
-            target.tool = MapCanvas::InspectNpc;
-            target.npc = canvas->selectedNpc;
-            target.schedule = schedule->currentIndex();
-            target.ghosts = npcGhosts->isChecked();
-        }
-        (*navigation)[resource + "/map"] = page->currentIndex();
-        loadPage();
-        x->setRange(0, canvas->side - 1);
-        y->setRange(0, canvas->side - 1);
+    connect(page, &QComboBox::currentIndexChanged, this, [this] {
+        if (page->currentIndex() >= 0)
+            selectPage(currentPage());
     });
     connect(tool, &QButtonGroup::idClicked, this, [=](int i) {
         cancelGesture();
@@ -1308,12 +1303,12 @@ MapWorkspace::MapWorkspace(
         if (resource.endsWith(".CBT"))
             return moveCombat(npc, destination);
         return moveNpcTo(npc, destination.x(), destination.y(),
-                         document.pages[page->currentIndex()].floor);
+                         document.pages[currentPage()].floor);
     };
     canvas->commit = [=](const QByteArray &ids) {
         try {
-            return commit(document.changes(page->currentIndex(), ids),
-                          canvas->operation + " " + document.pages[page->currentIndex()].name);
+            return commit(document.changes(currentPage(), ids),
+                          canvas->operation + " " + document.pages[currentPage()].name);
         } catch (const std::exception &e) {
             QMessageBox::warning(this, "Map edit rejected", QString::fromUtf8(e.what()));
             return false;
@@ -1329,6 +1324,43 @@ MapWorkspace::MapWorkspace(
     loadPage();
     x->setRange(0, canvas->side - 1);
     y->setRange(0, canvas->side - 1);
+}
+int MapWorkspace::currentPage() const { return page->currentData().toInt(); }
+void MapWorkspace::populateFloors(int index) {
+    QSignalBlocker block(page);
+    page->clear();
+    const auto &current = document.pages[index];
+    for (int i = 0; i < document.pages.size(); ++i) {
+        const auto &candidate = document.pages[i];
+        if (current.settlement >= 0 ? candidate.settlement == current.settlement : i == index) {
+            QString label = candidate.settlement < 0 ? candidate.name
+                            : candidate.floor < 0    ? "Basement"
+                            : candidate.floor == 0   ? "Ground floor"
+                                                   : QString("Upper floor %1").arg(candidate.floor);
+            page->addItem(label, i);
+        }
+    }
+    page->setCurrentIndex(page->findData(index));
+}
+void MapWorkspace::selectPage(int index) {
+    if (index < 0 || index >= document.pages.size())
+        return;
+    cancelGesture();
+    saveView();
+    int oldPage = navigation->value(resource + "/map");
+    if (canvas->tool == MapCanvas::InspectNpc && canvas->selectedNpc >= 0 &&
+        document.pages[oldPage].settlement == document.pages[index].settlement) {
+        auto &target = (*states)[resource + "/" + QString::number(index)];
+        target.tool = MapCanvas::InspectNpc;
+        target.npc = canvas->selectedNpc;
+        target.schedule = schedule->currentIndex();
+        target.ghosts = npcGhosts->isChecked();
+    }
+    (*navigation)[resource + "/map"] = index;
+    populateFloors(index);
+    loadPage();
+    findChild<QSpinBox *>("mapGoX")->setRange(0, canvas->side - 1);
+    findChild<QSpinBox *>("mapGoY")->setRange(0, canvas->side - 1);
 }
 void MapWorkspace::cancelGesture() { canvas->cancelStroke(); }
 void MapWorkspace::setBrush(int id) {
@@ -1418,12 +1450,12 @@ void MapWorkspace::saveView() {
 }
 void MapWorkspace::loadPage() {
     restoring = true;
-    key = resource + "/" + QString::number(page->currentIndex());
+    key = resource + "/" + QString::number(currentPage());
     auto state = states->value(key);
-    const auto &mp = document.pages[page->currentIndex()];
+    const auto &mp = document.pages[currentPage()];
     canvas->side = mp.side;
-    canvas->ids = document.terrain(page->currentIndex());
-    canvas->original = document.terrain(page->currentIndex(), true);
+    canvas->ids = document.terrain(currentPage());
+    canvas->original = document.terrain(currentPage(), true);
     canvas->keyboardCell = state.keyboardCell;
     canvas->selection = state.selection.intersected(QRect(0, 0, mp.side, mp.side));
     canvas->comparison = state.comparison;
@@ -1476,8 +1508,8 @@ void MapWorkspace::loadPage() {
         QTreeWidgetItemIterator it(maps);
         while (*it) {
             auto item = *it;
-            if (item->data(0, Qt::UserRole).toString() == resource &&
-                item->data(0, Qt::UserRole + 1).toInt() == page->currentIndex()) {
+            if (item->childCount() == 0 && item->data(0, Qt::UserRole).toString() == resource &&
+                item->data(0, Qt::UserRole + 1).toInt() == currentPage()) {
                 maps->setCurrentItem(item);
                 maps->scrollToItem(item);
                 break;
@@ -1502,7 +1534,7 @@ void MapWorkspace::loadPage() {
 }
 QString MapWorkspace::npcName(int npc) const {
     MapNpcDocument npcs(project, npcResource);
-    int id = npcs.dialogue(document.pages[page->currentIndex()].settlement, npc);
+    int id = npcs.dialogue(document.pages[currentPage()].settlement, npc);
     return npcNames.value(id, QString("Unnamed character %1").arg(npc + 1));
 }
 void MapWorkspace::createNpcInspector(QVBoxLayout *layout) {
@@ -1589,7 +1621,7 @@ void MapWorkspace::createNpcInspector(QVBoxLayout *layout) {
     connect(npcStartHour, &QSpinBox::editingFinished, this, [this] {
         if (restoring || canvas->selectedNpc < 0)
             return;
-        const int settlement = document.pages[page->currentIndex()].settlement;
+        const int settlement = document.pages[currentPage()].settlement;
         const int offset =
             settlement * 576 + canvas->selectedNpc * 16 + 12 + schedule->currentIndex();
         auto bytes = project->data(npcResource);
@@ -1624,8 +1656,7 @@ void MapWorkspace::createNpcInspector(QVBoxLayout *layout) {
         if (canvas->selectedNpc < 0)
             return;
         saveView();
-        (*navigation)[npcResource + "/settlement"] =
-            document.pages[page->currentIndex()].settlement;
+        (*navigation)[npcResource + "/settlement"] = document.pages[currentPage()].settlement;
         (*navigation)[npcResource + "/npc"] = canvas->selectedNpc;
         navigateResource(npcResource);
     });
@@ -1633,8 +1664,7 @@ void MapWorkspace::createNpcInspector(QVBoxLayout *layout) {
         if (canvas->selectedNpc < 0 || !project->resources.contains(talkResource))
             return;
         MapNpcDocument npcs(project, npcResource);
-        int id =
-            npcs.dialogue(document.pages[page->currentIndex()].settlement, canvas->selectedNpc);
+        int id = npcs.dialogue(document.pages[currentPage()].settlement, canvas->selectedNpc);
         auto conversations = U5::readDialogue(project->data(talkResource));
         for (int i = 0; i < conversations.size(); ++i)
             if (int(conversations[i].id) == id) {
@@ -1653,7 +1683,7 @@ void MapWorkspace::refreshNpcs() {
     }
     canvas->actors.clear();
     canvas->ghosts.clear();
-    const auto &mp = document.pages[page->currentIndex()];
+    const auto &mp = document.pages[currentPage()];
     QSignalBlocker blocked(npcList);
     npcList->clear();
     npcConversation->setEnabled(false);
@@ -1779,14 +1809,14 @@ void MapWorkspace::selectNpc(int npc) {
     }
     canvas->selectedNpc = npc;
     (*navigation)[resource + "/actor/" +
-                  QString::number(document.pages[page->currentIndex()].settlement)] = npc;
+                  QString::number(document.pages[currentPage()].settlement)] = npc;
     refreshNpcs();
     saveView();
 }
 bool MapWorkspace::moveNpcTo(int npc, int x, int y, int floor) {
     try {
         require(npc >= 0 && npc < 32, "Select an NPC before moving");
-        int settlement = document.pages[page->currentIndex()].settlement;
+        int settlement = document.pages[currentPage()].settlement;
         bool available = false;
         for (auto mp : document.pages)
             if (mp.settlement == settlement && mp.floor == floor)
@@ -1813,7 +1843,7 @@ void MapWorkspace::locateNpc() {
     if (canvas->selectedNpc < 0 || !project->resources.contains(npcResource))
         return;
     int npc = canvas->selectedNpc;
-    auto current = document.pages[page->currentIndex()];
+    auto current = document.pages[currentPage()];
     MapNpcDocument npcs(project, npcResource);
     auto loc = npcs.location(current.settlement, npc, schedule->currentIndex());
     if (loc.x >= 32 || loc.y >= 32) {
@@ -1823,13 +1853,13 @@ void MapWorkspace::locateNpc() {
     for (int i = 0; i < document.pages.size(); ++i)
         if (document.pages[i].settlement == current.settlement &&
             document.pages[i].floor == loc.floor) {
-            if (page->currentIndex() != i) {
+            if (currentPage() != i) {
                 auto &target = (*states)[resource + "/" + QString::number(i)];
                 target.schedule = schedule->currentIndex();
                 target.npc = npc;
                 target.ghosts = npcGhosts->isChecked();
                 target.tool = MapCanvas::InspectNpc;
-                page->setCurrentIndex(i);
+                selectPage(i);
             }
             selectNpc(npc);
             QTimer::singleShot(0, this,
@@ -1857,7 +1887,7 @@ void MapWorkspace::exportImage(bool ids, bool preview) {
             image = canvas->grab(visible).toImage();
         } else {
             // Use the document, never a displayed trigger-preview buffer.
-            image = document.terrainImage(page->currentIndex(), canvas->tiles, ids);
+            image = document.terrainImage(currentPage(), canvas->tiles, ids);
         }
         require(image.save(path, "PNG"), "Cannot export PNG");
         coordinate->setText(QString("Saved %1: %2")
@@ -1942,9 +1972,9 @@ void MapWorkspace::createCombatInspector(QVBoxLayout *layout) {
 void MapWorkspace::refreshCombat() {
     canvas->actors.clear();
     canvas->ghosts.clear();
-    canvas->ids = document.terrain(page->currentIndex());
+    canvas->ids = document.terrain(currentPage());
     const auto bytes = project->data(resource);
-    const int base = document.pages[page->currentIndex()].offset;
+    const int base = document.pages[currentPage()].offset;
     QSignalBlocker blocked(combatEntity);
     combatEntity->clear();
     QString info;
@@ -1997,8 +2027,8 @@ bool MapWorkspace::moveCombat(int entity, QPoint destination) {
         destination.x() > 10 || destination.y() > 10)
         return false;
     auto bytes = project->data(resource);
-    auto offsets = combatOffsets(document.pages[page->currentIndex()].offset, entity,
-                                 combatEntry->currentIndex());
+    auto offsets =
+        combatOffsets(document.pages[currentPage()].offset, entity, combatEntry->currentIndex());
     bytes[offsets.first] = char(destination.x());
     bytes[offsets.second] = char(destination.y());
     if (bytes != project->data(resource) &&

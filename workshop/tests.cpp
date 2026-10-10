@@ -665,7 +665,7 @@ int main(int argc, char **argv) {
             app.processEvents();
             app.processEvents();
             auto page = active()->findChild<QComboBox *>("mapPage");
-            page->setCurrentIndex(6);
+            page->setCurrentIndex(page->findData(1));
             app.processEvents();
             active()->findChild<QListWidget *>("mapPalette")->setCurrentRow(11);
             page->setCurrentIndex(0);
@@ -911,7 +911,7 @@ int main(int argc, char **argv) {
             active()->findChild<QPushButton *>("mapNpcLocate")->click();
             app.processEvents();
             app.processEvents();
-            check(active()->findChild<QComboBox *>("mapPage")->currentIndex() == 1 &&
+            check(active()->findChild<QComboBox *>("mapPage")->currentData().toInt() == 1 &&
                       active()->findChild<QComboBox *>("mapSchedule")->currentIndex() == 1 &&
                       canvas()->selectedNpc == 1,
                   "Locate reset actor or shared schedule slot");
@@ -978,7 +978,13 @@ int main(int argc, char **argv) {
                       active()->findChild<QComboBox *>("mapSchedule")->currentIndex() == 3 &&
                       active()->findChild<QCheckBox *>("mapNpcGhosts")->isChecked(),
                   "Dialogue return lost NPC state");
-            active()->findChild<QComboBox *>("mapPage")->setCurrentIndex(6);
+            auto tree = active()->findChild<QTreeWidget *>("mapNavigation");
+            QTreeWidgetItemIterator location(tree);
+            while (*location && ((*location)->childCount() == 0 || (*location)->text(0) != "Yew"))
+                ++location;
+            check(bool(*location), "Yew location heading missing");
+            tree->setCurrentItem(*location);
+            app.processEvents();
             app.processEvents();
             active()->findChild<QComboBox *>("mapNpcList")->setCurrentIndex(1);
             active()->findChild<QComboBox *>("mapSchedule")->setCurrentIndex(2);
@@ -992,7 +998,7 @@ int main(int argc, char **argv) {
             active()->findChild<QPushButton *>("mapNpcMove")->click();
             app.processEvents();
             app.processEvents();
-            check(active()->findChild<QComboBox *>("mapPage")->currentIndex() == 7 &&
+            check(active()->findChild<QComboBox *>("mapPage")->currentData().toInt() == 7 &&
                       active()->findChild<QComboBox *>("mapSchedule")->currentIndex() == 2 &&
                       U5::byte(window.projectForTests().data("TOWNE.NPC"), yew + 11) == 0,
                   "Cross-floor move failed");
@@ -1304,7 +1310,7 @@ int main(int argc, char **argv) {
             check(QDir(cache.path()).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size() == 2,
                   "Failed test preparation left a partial runtime");
         });
-        test("Compact map-wide schedule hours and icon toolbar alignment", [&] {
+        test("Compact map-wide schedule hours and floor selector alignment", [&] {
             QTemporaryDir dir;
             fixture(dir.path());
             file(dir.path() + "/TOWNE.DAT", QByteArray(16384, 5));
@@ -1335,10 +1341,29 @@ int main(int argc, char **argv) {
             auto tools = workspace.findChild<QButtonGroup *>("mapTools");
             check(schedule->itemText(0) == "08:00" && schedule->itemText(3) == "20:00",
                   "Consistent map-wide hours are not shown");
-            auto button = tools->button(MapCanvas::Pencil);
+            auto floors = workspace.findChild<QComboBox *>("mapPage");
             check(qAbs(schedule->mapTo(&workspace, QPoint()).y() -
-                       button->mapTo(&workspace, QPoint()).y()) < 10,
-                  "Schedule selector is not beside the tool buttons");
+                       floors->mapTo(&workspace, QPoint()).y()) < 10,
+                  "Schedule selector is not beside the floor selector");
+            check(floors->count() == 2 && floors->findData(0) >= 0 && floors->findData(1) >= 0 &&
+                      floors->findData(6) < 0,
+                  "Floor selector includes other locations");
+            auto tree = workspace.findChild<QTreeWidget *>("mapNavigation");
+            QTreeWidgetItemIterator location(tree);
+            while (*location && ((*location)->childCount() == 0 || (*location)->text(0) != "Yew"))
+                ++location;
+            check(bool(*location), "Yew location heading missing");
+            tree->setCurrentItem(*location);
+            app.processEvents();
+            check(floors->currentData().toInt() == 7 && floors->count() == 2 &&
+                      floors->findData(0) < 0,
+                  "Location heading did not open its main floor");
+            QTreeWidgetItemIterator moonglow(tree);
+            while (*moonglow &&
+                   ((*moonglow)->childCount() == 0 || (*moonglow)->text(0) != "Moonglow"))
+                ++moonglow;
+            tree->setCurrentItem(*moonglow);
+            app.processEvents();
             npcs[16 + 3] = 3;
             npcs[16 + 6] = 3;
             npcs[16 + 12] = 9;

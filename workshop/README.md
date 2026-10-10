@@ -228,7 +228,7 @@ or becomes invalid, use **Open game / New mod** to select it again.
 Find terrain tiles by name or number and filter by category. All 256 terrain tiles
 are categorized from engine definitions and the original DOS artwork. The compact
 palette shows artwork only; hover for names, categories, and IDs. Tool icons have
-descriptive tooltips. The adjacent NPC schedule selector shows shared start hours
+descriptive tooltips. The labeled NPC schedule selector beside the floor list shows shared start hours
 or changes 1–4 when NPC timings differ.
 On the map canvas, use arrow keys to target a tile and Enter to apply the tool
 (or move the selected character/encounter marker). Shift+arrows extend a terrain
