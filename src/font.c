@@ -743,17 +743,20 @@ void FONT_0b0a(void)
         ULTIMA_251e_SwitchDisks(3);
 
         // NOT MATCHING: sub al, al vs sub ax, ax
+#if defined(TARGET_SDL)
+        if(!SLOTS_CreateInitial()) {
+            ULTIMA_1850_PrintString("\nCould not create save slot. Check INIT.OOL, free space and SAVEGAME permissions.\n");
+            ULTIMA_1dda_WaitForKeystroke(0);
+            ULTIMA_251e_SwitchDisks(0);
+            return;
+        }
+#else
         memset(D_b21e, 0, 0x100);
+#endif
 
         ULTIMA_25d8_WriteFileToDisk(/*0xa0cc*/ "SAVED.OOL", D_b21e, 0x200);
 #if !defined(TARGET_DOS16)
         FILE_WriteSavegameFile(/*0xa0d6*/ "SAVED.GAM");
-#if defined(TARGET_SDL)
-        if(!SLOTS_CreateInitial()) {
-            ULTIMA_1850_PrintString("\nCould not create save slot. Check free space and SAVEGAME permissions.\nPress a key.\n");
-            ULTIMA_1dda_WaitForKeystroke(0);
-        }
-#endif
 #else
         ULTIMA_25d8_WriteFileToDisk(/*0xa0d6*/ "SAVED.GAM", &D_55a6, (int)&D_6606 - (int)&D_55a6);
 #endif

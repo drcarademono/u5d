@@ -1,6 +1,11 @@
 # Workshop: Other Resources audit
 
-This audit covers the current Workshop resource tree and Impera's consumers, using
+This records the baseline before the Phase 1 fixes. The Britannia runtime-index
+and new-game object compatibility gaps below are now addressed; see the
+[implementation status](workshop-resource-editors-plan.md#phase-1--establish-reliable-runtime-compatibility).
+Other DOS overlay tables remain unsupported.
+
+This audit covers the Workshop resource tree and Impera's consumers, using
 one original DOS installation as a sample. **Other Resources is a UI catch-all,
 not a game-file format.** Its 18 files include dungeon maps, text, fonts, world
 object state, special scenes, and an original DOS data overlay.

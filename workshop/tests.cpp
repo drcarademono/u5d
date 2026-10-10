@@ -1,6 +1,7 @@
 #include "dialogue.h"
 #include "dialogue_editor.h"
 #include "mod/package.h"
+#include "mod/world_resources.h"
 #include "window.h"
 #include <QTemporaryDir>
 #include <QtWidgets>
@@ -51,6 +52,63 @@ int main(int argc, char **argv) {
         std::cout << "PASS " << name << "\n";
     };
     try {
+        test("Export Britannia package for engine integration", [] {
+            QTemporaryDir dir;
+            auto project = fixture(dir.path());
+            QByteArray overlay(U5_WORLD_INDEX_OFFSET + 256, 0);
+            std::memcpy(overlay.data() + U5_WORLD_INDEX_OFFSET, U5_BritanniaDefaultIndex, 256);
+            QByteArray chunks(65536, 5);
+            chunks.replace(256, 256, QByteArray(256, 7));
+            file(dir.path() + "/DATA.OVL", overlay);
+            file(dir.path() + "/BRIT.DAT", chunks);
+            project.openGame(dir.path());
+            auto &changed = project.resources["DATA.OVL"].edited;
+            changed.replace(U5_WORLD_INDEX_OFFSET, 256, QByteArray(256, char(255)));
+            changed[U5_WORLD_INDEX_OFFSET] = 1;
+            changed[U5_WORLD_INDEX_OFFSET + 255] = 0;
+            auto package = project.package();
+            Project loaded;
+            loaded.openGame(dir.path());loaded.importPackage(package);
+            check(loaded.data("DATA.OVL") == changed, "World package round trip");
+            // Optional bridge to save_slots_test's production world-loader test.
+            if (qEnvironmentVariableIsSet("IMPERA_WORLD_TEST_PACKAGE"))
+                file(qEnvironmentVariable("IMPERA_WORLD_TEST_PACKAGE"), package);
+        });
+        test("World resource validation and capability guidance", [] {
+            QTemporaryDir dir;
+            auto project = fixture(dir.path());
+            QByteArray overlay(U5_WORLD_INDEX_OFFSET + 256, 0);
+            std::memcpy(overlay.data() + U5_WORLD_INDEX_OFFSET, U5_BritanniaDefaultIndex, 256);
+            file(dir.path() + "/DATA.OVL", overlay);
+            file(dir.path() + "/BRIT.DAT", QByteArray(65536, 5));
+            file(dir.path() + "/INIT.OOL", QByteArray(256, 0));
+            file(dir.path() + "/UNDER.OOL", QByteArray(256, 0));
+            project.openGame(dir.path());
+            auto &changed = project.resources["DATA.OVL"].edited;
+            changed.replace(U5_WORLD_INDEX_OFFSET, 256, QByteArray(256, char(255)));
+            changed[U5_WORLD_INDEX_OFFSET] = 0;
+            project.resources["BRIT.DAT"].edited = QByteArray(256, 7);
+            project.validate();
+            auto report = validateMod(project);
+            check(std::none_of(report.begin(), report.end(), [](const auto &d) {
+                return d.severity == ModDiagnostic::Error;
+            }), "Paired Britannia map/index edit reported invalid");
+            changed[U5_WORLD_INDEX_OFFSET] = 1;
+            rejects([&] { project.validate(); });
+            changed[U5_WORLD_INDEX_OFFSET] = 0;
+            changed[0] = 1;
+            project.resources["INIT.OOL"].edited[0] = 1;
+            project.resources["UNDER.OOL"].edited[0] = 2;
+            report = validateMod(project);
+            check(std::any_of(report.begin(), report.end(), [](const auto &d) {
+                return d.message.contains("outside the Britannia map index");
+            }), "Unsupported overlay edits were not explained");
+            check(std::any_of(report.begin(), report.end(), [](const auto &d) {
+                return d.message.contains("UNDER.OOL overrides this");
+            }), "Initial object precedence was not explained");
+            project.resources["INIT.OOL"].edited.resize(255);
+            rejects([&] { project.validate(); });
+        });
         test("Lossless dialogue structure", [] {
             auto bytes =
                 U5::encodeText("Name<Entry>Description<Entry>Greeting<Entry>Job<Entry>Bye<Entry>"

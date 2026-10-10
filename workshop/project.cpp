@@ -1,6 +1,7 @@
 #include "project.h"
 #include "dialogue.h"
 #include "mod/package.h"
+#include "mod/world_resources.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -76,10 +77,23 @@ void Project::validate() const {
             require(b.size() == 4608, "NPC schedules must be 4608 bytes");
         else if (name == "INIT.GAM")
             require(b.size() == 4192, "INIT.GAM must be 4192 bytes");
+        else if (name == "INIT.OOL" || name == "BRIT.OOL" || name == "UNDER.OOL")
+            require(b.size() == U5_WORLD_OBJECT_SIZE,
+                    name + ": world objects must contain 32 eight-byte records");
         else if (name == "STORY.DAT")
             U5::storyPages(b);
-        else if (name == "BRIT.DAT" || name == "DATA.OVL")
-            U5::worldMap("BRIT.DAT", data("BRIT.DAT"), data("DATA.OVL"));
+        else if (name == "BRIT.DAT" || name == "DATA.OVL") {
+            const auto &overlay = data("DATA.OVL");
+            const uint8_t *index = U5_BritanniaDefaultIndex;
+            if (resources["DATA.OVL"].original != overlay) {
+                require(overlay.size() >= int(U5_WORLD_INDEX_OFFSET + U5_WORLD_INDEX_SIZE),
+                        "DATA.OVL is missing its Britannia chunk index");
+                index = reinterpret_cast<const uint8_t *>(overlay.constData()) + U5_WORLD_INDEX_OFFSET;
+            }
+            require(U5_ValidBritanniaIndex(index, data("BRIT.DAT").size()),
+                    "Britannia chunk index references missing/truncated BRIT.DAT chunks");
+            U5::worldMap("BRIT.DAT", data("BRIT.DAT"), overlay);
+        }
         else if (name == "UNDER.DAT")
             U5::worldMap(name, b, QByteArray());
         else if (name.endsWith(".CBT") ||
@@ -267,7 +281,7 @@ QVector<ModDiagnostic> validateMod(const Project &project) {
             Project single = project;
             single.title = "Validation";
             for (auto it = single.resources.begin(); it != single.resources.end(); ++it)
-                if (it.key() != name)
+                if (it.key() != name && !(name == "BRIT.DAT" && it.key() == "DATA.OVL"))
                     it->original = it->edited;
             single.validate();
         } catch (const std::exception &error) {
@@ -277,6 +291,30 @@ QVector<ModDiagnostic> validateMod(const Project &project) {
                        QString("Package replaces this entire resource (%1 bytes → %2 bytes).")
                            .arg(project.resources[name].original.size())
                            .arg(project.data(name).size())});
+        if (name == "INIT.GAM" || name == "INIT.OOL" || name == "BRIT.OOL" || name == "UNDER.OOL")
+            result.append({ModDiagnostic::Information, name,
+                           "Applies to new games only. Existing saves keep their saved party and object state. "
+                           "New games use an empty Britannia list unless BRIT.OOL is overridden; "
+                           "UNDER.OOL overrides take precedence over INIT.OOL. World starts use "
+                           "that world's object list; settlement actors remain in INIT.GAM."});
+        if (name == "INIT.OOL" && changes.contains("UNDER.OOL"))
+            result.append({ModDiagnostic::Warning, name,
+                           "UNDER.OOL overrides this initial underworld object list in new games."});
+        if (name == "DATA.OVL") {
+            result.append({ModDiagnostic::Information, name,
+                           "Britannia map index supported by Impera; other DOS overlay tables "
+                           "are not runtime configuration. Requires an engine with Workshop Phase 1 support."});
+            auto before = project.resources[name].original;
+            auto after = project.data(name);
+            if (before.size() >= int(U5_WORLD_INDEX_OFFSET + U5_WORLD_INDEX_SIZE) &&
+                after.size() >= int(U5_WORLD_INDEX_OFFSET + U5_WORLD_INDEX_SIZE)) {
+                before.replace(U5_WORLD_INDEX_OFFSET, U5_WORLD_INDEX_SIZE, QByteArray(256, 0));
+                after.replace(U5_WORLD_INDEX_OFFSET, U5_WORLD_INDEX_SIZE, QByteArray(256, 0));
+                if (before != after)
+                    result.append({ModDiagnostic::Warning, name,
+                                   "Changes outside the Britannia map index have no supported runtime effect."});
+            }
+        }
         const auto &bytes = project.data(name);
         if (name.endsWith(".NPC") && bytes.size() == 4608) {
             int unusual = 0;

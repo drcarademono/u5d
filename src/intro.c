@@ -1651,17 +1651,20 @@ L_GOG_1402:
     ULTIMA_251e_SwitchDisks(3);
     ULTIMA_1850_PrintString(_TEXT(0x361e, "\n\n Conversion complete, saving...\n"));
 
+#if defined(TARGET_SDL)
+    if(!SLOTS_CreateInitial()) {
+        ULTIMA_1850_PrintString("\nCould not create save slot. Check INIT.OOL, free space and SAVEGAME permissions.\n");
+        ULTIMA_1dda_WaitForKeystroke(0);
+        ULTIMA_251e_SwitchDisks(0);
+        return;
+    }
+#else
     memset(D_b21e, 0, 0x100);
+#endif
 
     ULTIMA_25d8_WriteFileToDisk(/*0x3641*/ "SAVED.OOL", D_b21e, 0x200);
 #if !defined(TARGET_DOS16)
     FILE_WriteSavegameFile(/*0x364b*/ "SAVED.GAM");
-#if defined(TARGET_SDL)
-    if(!SLOTS_CreateInitial()) {
-        ULTIMA_1850_PrintString("\nCould not create save slot. Check free space and SAVEGAME permissions.\nPress a key.\n");
-        ULTIMA_1dda_WaitForKeystroke(0);
-    }
-#endif
 #else
     ULTIMA_25d8_WriteFileToDisk(/*0x364b*/ "SAVED.GAM", &D_55a6, ((byte*)&D_6606 - (byte*)&D_55a6));
 #endif

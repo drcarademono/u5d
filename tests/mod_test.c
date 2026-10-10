@@ -3,12 +3,13 @@
 #include "common/file.h"
 #include "mod/package.h"
 #include "mod/runtime.h"
+#include "mod/world_resources.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
 typedef struct Buffer {
-    unsigned char bytes[2048];
+    unsigned char bytes[131072];
     size_t size;
 } Buffer;
 static void bytes(Buffer *b, const void *p, size_t n) {
@@ -28,17 +29,21 @@ static void header(Buffer *b, unsigned count) {
     number(b, count);
     bytes(b, "Test", 4);
 }
-static void entry(Buffer *b, const char *name, const char *base, const char *changed) {
+static void rawEntry(Buffer *b, const char *name, const void *base, size_t baseSize,
+                     const void *changed, size_t changedSize) {
     number(b, (uint32_t)strlen(name));
     bytes(b, name, strlen(name));
-    number(b, (uint32_t)strlen(base));
-    number(b, (uint32_t)strlen(changed));
-    number(b, MOD_Crc32(base, strlen(base)));
-    number(b, MOD_Crc32(changed, strlen(changed)));
+    number(b, (uint32_t)baseSize);
+    number(b, (uint32_t)changedSize);
+    number(b, MOD_Crc32(base, baseSize));
+    number(b, MOD_Crc32(changed, changedSize));
     number(b, 1);
     number(b, 0);
-    number(b, (uint32_t)strlen(changed));
-    bytes(b, changed, strlen(changed));
+    number(b, (uint32_t)changedSize);
+    bytes(b, changed, changedSize);
+}
+static void entry(Buffer *b, const char *name, const char *base, const char *changed) {
+    rawEntry(b, name, base, strlen(base), changed, strlen(changed));
 }
 static void put(const char *path, const void *data, size_t size) {
     FILE *f = fopen(path, "wb");
@@ -62,6 +67,77 @@ static void value(const char *path, const char *expected, int useMod) {
     assert(fread(b, 1, sizeof(b) - 1, f) == strlen(expected));
     assert(!strcmp(b, expected));
     fclose(f);
+}
+static void worldResources(void) {
+    static unsigned char overlay[U5_WORLD_INDEX_OFFSET + 256], altered[sizeof(overlay)];
+    static unsigned char map[65536], worlds[512], seed[256], brit[256], under[256];
+    Buffer b;
+    memset(map, 5, sizeof(map));
+    memset(map + 256, 7, 256);
+    memcpy(overlay + U5_WORLD_INDEX_OFFSET, U5_BritanniaDefaultIndex, 256);
+    memcpy(altered, overlay, sizeof(overlay));
+    memset(altered + U5_WORLD_INDEX_OFFSET, 255, 256);
+    altered[U5_WORLD_INDEX_OFFSET] = 1;
+    altered[U5_WORLD_INDEX_OFFSET + 255] = 0;
+    put("game/DATA.OVL", overlay, sizeof(overlay));
+    put("game/BRIT.DAT", map, sizeof(map));
+    memset(seed, 0xab, 256); memset(brit, 0x23, 256); memset(under, 0x45, 256);
+    put("game/INIT.OOL", seed, 256);
+    put("game/BRIT.OOL", seed, 256); put("game/UNDER.OOL", seed, 256);
+    put("SAVEGAME/BRIT.OOL", "old world", 9);
+    put("SAVEGAME/UNDER.OOL", "old world", 9);
+    header(&b, 1);rawEntry(&b, "DATA.OVL", overlay, sizeof(overlay), altered, sizeof(altered));
+    put("game/Mods/10-index.imperamod", b.bytes, b.size);
+    FILE_SetDataDirectory("game");
+    assert(MOD_LoadedCount() == 1);
+    assert(MOD_BritanniaIndex()[0] == 1 && MOD_BritanniaIndex()[1] == 255 && MOD_BritanniaIndex()[255] == 0);
+    assert(MOD_InitializeWorldObjects(worlds));
+    for (unsigned i=0;i<512;++i) assert(worlds[i] == (i<256?0:0xab));
+    value("SAVEGAME/BRIT.OOL", "old world", 0);
+    /* A second package may supply the map paired with the earlier index. */
+    header(&b, 1);rawEntry(&b, "BRIT.DAT", map, sizeof(map), map, 512);
+    put("game/Mods/11-map.imperamod", b.bytes, b.size);
+    header(&b, 2);
+    rawEntry(&b, "BRIT.OOL", seed, 256, brit, 256);
+    rawEntry(&b, "INIT.OOL", seed, 256, under, 256);
+    put("game/Mods/12-objects.imperamod", b.bytes, b.size);
+    FILE_SetDataDirectory("game");assert(MOD_LoadedCount()==3);
+    assert(MOD_InitializeWorldObjects(worlds));
+    assert(!memcmp(worlds,brit,256) && !memcmp(worlds+256,under,256));
+    /* Explicit UNDER.OOL overrides INIT.OOL, regardless of existing save files. */
+    header(&b, 1);rawEntry(&b, "UNDER.OOL", seed, 256, brit, 256);
+    put("game/Mods/13-under.imperamod", b.bytes, b.size);
+    FILE_SetDataDirectory("game");assert(MOD_LoadedCount()==4);
+    assert(MOD_InitializeWorldObjects(worlds));assert(!memcmp(worlds+256,brit,256));
+    remove("SAVEGAME/BRIT.OOL");remove("SAVEGAME/UNDER.OOL");
+    assert(MOD_InitializeWorldObjects(worlds));assert(!memcmp(worlds,brit,256));
+    /* Invalid object records reject their entire package. */
+    remove("game/Mods/13-under.imperamod");
+    header(&b, 2);rawEntry(&b, "UNDER.OOL", seed, 256, brit, 255);
+    entry(&b,"STORY.DAT","base","partial");
+    put("game/Mods/13-under.imperamod",b.bytes,b.size);
+    FILE_SetDataDirectory("game");assert(MOD_LoadedCount()==3);value("STORY.DAT","base",1);
+    remove("game/Mods/13-under.imperamod");remove("game/Mods/12-objects.imperamod");
+    /* Invalid effective index/map pair rejects the map package atomically. */
+    header(&b, 2);rawEntry(&b,"BRIT.DAT",map,sizeof(map),map,256);
+    entry(&b,"STORY.DAT","base","partial");
+    put("game/Mods/11-map.imperamod",b.bytes,b.size);
+    FILE_SetDataDirectory("game");assert(MOD_LoadedCount()==1);value("STORY.DAT","base",1);
+    remove("game/Mods/11-map.imperamod");
+    header(&b, 1);rawEntry(&b,"DATA.OVL",overlay,sizeof(overlay),altered,256);
+    put("game/Mods/10-index.imperamod",b.bytes,b.size);
+    FILE_SetDataDirectory("game");assert(MOD_LoadedCount()==0);
+    assert(!memcmp(MOD_BritanniaIndex(),U5_BritanniaDefaultIndex,256));
+    remove("game/Mods/10-index.imperamod");
+    /* Compiled defaults work without a base overlay. Failed initialization is atomic. */
+    remove("game/DATA.OVL");FILE_SetDataDirectory("game");
+    assert(!memcmp(MOD_BritanniaIndex(),U5_BritanniaDefaultIndex,256));
+    memset(worlds,0xee,512);put("game/INIT.OOL",seed,255);
+    assert(!MOD_InitializeWorldObjects(worlds));
+    for(unsigned i=0;i<512;++i) assert(worlds[i]==0xee);
+    FILE_SetDataDirectory(NULL);
+    const char *files[]={"game/BRIT.DAT","game/INIT.OOL","game/BRIT.OOL","game/UNDER.OOL"};
+    for(unsigned i=0;i<4;++i) remove(files[i]);
 }
 int main(void) {
     assert(MOD_AllowedResource("INIT.GAM"));
@@ -152,6 +228,7 @@ int main(void) {
     remove("game/Mods/03-paired-conflict.imperamod");
     remove("game/Mods/04-invalid.IMPERAMOD");
     remove("SAVEGAME/INIT.GAM");
+    worldResources();
     puts("Mod package validation, atomic mounting, order, conflicts, reloads and original preservation "
          "passed");
     return 0;

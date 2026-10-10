@@ -1,6 +1,6 @@
 # Workshop resource editors: implementation plan
 
-Status: proposal, not implemented. Continue on `feature/native-modding` unless
+Status: Phase 1 implemented; Phases 2–9 remain proposals. Continue on `feature/native-modding` unless
 instructed otherwise. This extends the [Other Resources audit](workshop-other-resources-audit.md)
 and existing [map workspace plan](workshop-map-ui.md).
 
@@ -93,6 +93,19 @@ resource should produce diagnostics and retain access to the raw inspector,
 not crash Workshop or silently replace the file with defaults.
 
 ## Phase 1 — Establish reliable runtime compatibility
+
+Implemented: effective index/map validation at package mounting; common index for
+gameplay and extended viewport; remount cache invalidation; fresh object templates
+at modern initial-slot creation (including Ultima IV transfer); world-start actor
+reconciliation; Workshop validation and capability diagnostics. The package format
+remains `IMOD0001`. No released minimum version is assigned yet; older engine
+builds must be upgraded to use this support.
+
+Regression coverage includes a package exported by Workshop and read by the
+production gameplay/fullscreen loaders, malformed/cross-package index pairs,
+remounts, object precedence, clean/used installations, modern initial slots and
+loading pre-mod saves. Verified locally on Linux; platform CI remains the check
+for Windows and both macOS architectures.
 
 ### Britannia chunk index (`DATA.OVL` and `BRIT.DAT`)
 

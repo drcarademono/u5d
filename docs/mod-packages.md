@@ -68,3 +68,35 @@ the native Workshop and Impera. `src/mod/runtime.c` mounts packages, and
 `FILE_Open` applies overrides only to bare, read-only resource names. Explicit
 paths and writable handles retain their existing behavior. The legacy DOS
 Makefile has no SDL mod loader; this feature belongs to Impera's native port.
+
+## World maps and starting objects
+
+Impera now uses a replaced `DATA.OVL`'s Britannia chunk index at `0x3886` for both
+normal gameplay and the expanded fullscreen viewport. Packages containing a map
+or index edit are checked against the effective `BRIT.DAT`/index pair, including
+earlier non-conflicting packages. Invalid chunk references or truncated data
+reject the whole candidate package. Without an overlay override, the original
+compiled index remains the default; other DOS overlay tables are not interpreted.
+Prefer exporting the paired map/index edits together through Workshop.
+
+Starting object overrides apply when creating a character or transferring one
+from Ultima IV, before the normal modern initial save is serialized:
+
+- Britannia starts empty unless a package explicitly replaces `BRIT.OOL`.
+- Underworld starts from effective `INIT.OOL`, unless a package explicitly
+  replaces `UNDER.OOL`, which takes precedence.
+- Each object list must contain exactly 32 eight-byte records (256 bytes).
+- A world start uses that world's template for its active object list too;
+  settlement actors still come from the starting game state (`INIT.GAM`).
+
+Existing runtime world files do not change these new-game templates. Existing
+modern saves retain their saved party and object state; templates are not applied
+again when loading a save or traveling. Normal world-save initialization for
+first-time installation remains separate. Terrain resource replacements still
+apply to the game normally; they are not restricted to new games.
+
+Packages depending on this behavior require an engine build with Workshop Phase 1
+support. The package encoding is unchanged, so older builds can decode a package
+without implementing these effects. There is no minimum-engine-version field in
+`IMOD0001`; version enforcement is reserved for a future format/schema extension.
+Workshop's package preview reports these compatibility limits.

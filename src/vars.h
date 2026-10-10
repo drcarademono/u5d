@@ -279,7 +279,6 @@ STUB u8 D_3850[0xd]; // ~385d)? TODO: size, offset
 STUB u8 D_385e[8]; // ~3866)
 STUB u8 D_3866[8]; // ~386e)
 STUB u8 D_386e[8]; // ~3876)
-STUB u8 D_3876[0x100]; // ~3976) TODO: size?
 
 STUB u8 D_3a06[3];
 STUB u8 D_3a0a[3];

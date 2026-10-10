@@ -1,3 +1,4 @@
+#include "mod/runtime.h"
 #include "save_slots.h"
 #if defined(TARGET_SDL)
 #include "engine_settings.h"
@@ -173,8 +174,12 @@ bool SLOTS_Write(const char* id,const char* name,const char* thumbnail)
 }
 bool SLOTS_CreateInitial(void)
 {
-    /* Character creation has initialized the complete pair of world lists. */
-    if(!storage()) return false;
+    /* Always resolve new-game templates afresh; never seed from old saves. */
+    if(!storage() || !MOD_InitializeWorldObjects(D_b21e)) return false;
+    /* Settlement actors belong to INIT.GAM; a world start must serialize the
+     * same objects in SAVED.GAM's resident list and SAVED.OOL's world list. */
+    if(D_5893_map_id == 0)
+        memcpy(D_5c5a, D_b21e + (D_5895_map_level ? 256 : 0), 256);
     SLOTS_ResetTime();
     char name[sizeof(D_55a8_party[0].name)+1];
     memcpy(name,D_55a8_party[0].name,sizeof(D_55a8_party[0].name));name[sizeof(name)-1]=0;

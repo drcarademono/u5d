@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "common/common.h"
+#include "common/file.h"
 #include "vars.h"
 #include "macros.h"
 #include "tiles.h"
@@ -748,7 +749,11 @@ int main(int argc, char** argv)
      * together different animation phases from the old and current frames. */
     D_5893_map_id=0;D_5895_map_level=0;D_5896_map_x=100;D_5897_map_y=100;D_58a5=50;
     memset(D_6608_map.raw,1,sizeof(D_6608_map.raw));
-    D_589b=90;D_589c=90;memset(D_3876,255,sizeof(D_3876));
+    D_589b=90;D_589c=90;
+    /* Supply water chunks instead of mutating the engine's default map index. */
+    FILE *waterFile=FILE_Open("BRIT.DAT","wb");assert(waterFile);
+    for(int i=0;i<65536;i++) assert(fputc(1,waterFile)!=EOF);
+    assert(!fclose(waterFile));
     memset(D_5c5a,0,sizeof(D_5c5a));
     D_b11e[1]=1;
     waterMap=(SDL_Rect){(1024-l.width*l.scale)/2+l.mapX*l.scale,(768-l.height*l.scaleY)/2+l.mapY*l.scaleY,l.columns*16*l.scale,l.rows*16*l.scaleY};
@@ -1088,6 +1093,7 @@ int main(int argc, char** argv)
         assert(abs(D_ba14[1].x-5)+abs(D_ba14[1].y-5)==1);
     }
     MOUSE_SetCommandInput(false);
+    remove("BRIT.DAT");
     MOUSE_Cleanup();
     GRAP_SDL_Cleanup(); SDL_Quit();
     puts("Mouse directions, action ranges, click timing, modal gating, and coordinate mapping passed.");

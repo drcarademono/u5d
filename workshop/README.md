@@ -287,3 +287,9 @@ limits affecting original DOS data tables and world-object state.
 The [resource editor implementation plan](../docs/workshop-resource-editors-plan.md)
 covers the proposed editors, user interface, runtime compatibility fixes and
 phase-by-phase acceptance checks.
+
+World-map exports now use their authored Britannia chunk index in Impera's normal
+and expanded viewports. Starting object edits require a new game; `UNDER.OOL`
+overrides `INIT.OOL`, and existing saves retain their own objects. Package Preview
+explains these rules and warns about unsupported DOS overlay table edits. See
+[world-resource compatibility](../docs/mod-packages.md#world-maps-and-starting-objects).

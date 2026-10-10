@@ -1,3 +1,5 @@
+#include "mod/world_resources.h"
+#include "mod/runtime.h"
 #include "common/common.h"
 #include "vars.h"
 #include "funcs.h"
@@ -59,7 +61,11 @@ static void OUTSUBS_0098(char* param_1/*file_name*/, int param_2/*layer?*/, int 
 
     if (*param_1 == 'B') // "BRIT.DAT"
     {
-        local_4 = D_3876[(byte)(param_3 >> 8)];
+#if defined(TARGET_SDL)
+        local_4 = MOD_BritanniaIndex()[(byte)(param_3 >> 8)];
+#else
+        local_4 = U5_BritanniaDefaultIndex[(byte)(param_3 >> 8)];
+#endif
         if (local_4 == 0xff)
         {
             memset(&D_6608[param_2 * 0x100], 1, 0x100);
