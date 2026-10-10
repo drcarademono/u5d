@@ -1,6 +1,6 @@
 # Workshop resource editors: implementation plan
 
-Status: Phases 1–3 implemented; Phases 4–9 remain proposals. Continue on `feature/native-modding` unless
+Status: Phases 1–4 implemented; Phases 5–9 remain proposals. Continue on `feature/native-modding` unless
 instructed otherwise. This extends the [Other Resources audit](workshop-other-resources-audit.md)
 and existing [map workspace plan](workshop-map-ui.md).
 
@@ -254,6 +254,36 @@ visit the edited dungeon and open its room in Impera. Explain that an already
 loaded dungeon in a save may retain its old layout.
 
 ## Phase 4 — Signs and descriptions (`SIGNS.DAT`, `LOOK2.DAT`)
+
+Implemented: native Signs and Look descriptions workspaces with searchable entries,
+map markers, existing-artwork thumbnails, current-location floors, coordinate
+editing, add/delete confirmation, normal/runic lettering controls and font previews.
+Settlement maps link to their Signs layer; Britannia's world signs are also editable.
+A terrain mismatch warns without painting tiles. Generated wanted posters are
+marked on the map; their overridden stored record is preserved during other edits.
+Drafts apply on resource/save/export navigation, with discard protection when
+switching entries or floors. Edits use the existing project undo/package pipeline.
+
+The sign codec verifies the 33 signed offset entries, map IDs, signed floors,
+coordinates, record grouping and buffer budgets. It accepts the original file's
+zero-filled tail as well as explicit terminators, preserves unknown tail bytes,
+rebuilds offsets within the signed 16-bit limit and is byte-identical for no-ops.
+Description pointers are checked against the pool and the engine's 128-byte
+string buffer. Selected-only changes append a detached string; linked changes
+update only shared pointers. Unknown/unused pool bytes remain unchanged.
+
+Runtime lookup now stops at the next location and handles truncated/unterminated
+sign records safely. Look string buffers are initialized and NUL-bounded. Tests
+exercise that actual shared engine lookup, codec rejection, original-data round
+trips, native editing, undo, project reopen and package import/export.
+
+Compatibility limits: code-generated text is identified rather than editable.
+The sign preview expands the engine's border shortcuts, but does not simulate
+interactive pauses or the legacy blank-record jump into a following sign. The
+font preview does not simulate scrolling or every PrintString formatting control.
+No interactive gameplay session is claimed by the automated package checks.
+
+Original phase requirements:
 
 Signs UI: a Signs layer in the existing location map, sign markers, list/search,
 and inspector with floor, coordinates, text and exact regular/runic preview.

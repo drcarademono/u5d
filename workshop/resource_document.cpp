@@ -1,5 +1,6 @@
 #include "resource_document.h"
 #include "dialogue.h"
+#include "location_text.h"
 #include "dungeon_editor.h"
 #include "mod/world_resources.h"
 using U5::require;
@@ -16,6 +17,8 @@ Capability capability(const QString &resource) {
         return {"Starting state", "Starting state", "Applied to new games", EditorKind::State};
     if (n == "STORY.DAT")
         return {"Introduction story", "Story", "Editable fixed text windows", EditorKind::Story};
+    if (n == "SIGNS.DAT" || n == "LOOK2.DAT")
+        return {n == "SIGNS.DAT" ? "Signs" : "Look descriptions", "Text", "Editable location text", EditorKind::LocationText};
     if (n == "DUNGEON.DAT")
         return {"Dungeons", "Maps", "Editable dungeon features and room links",
                 EditorKind::Dungeon};
@@ -25,7 +28,7 @@ Capability capability(const QString &resource) {
         return {n, "Maps", "Editable terrain", EditorKind::Map};
     static const QMap<QString, QString> titles = {{"DUNGEON.DAT", "Dungeon levels"},
                                                   {"SIGNS.DAT", "Signs"},
-                                                  {"LOOK.DAT", "Object descriptions"},
+                                                  {"LOOK2.DAT", "Object descriptions"},
                                                   {"QUESTION.DAT", "Character creation questions"},
                                                   {"END.DAT", "Ending story"},
                                                   {"ENDMSG.DAT", "Ending messages"},
@@ -59,6 +62,31 @@ ResourceDocument::ResourceDocument(const Project &p, QString r)
 }
 QVector<Entry> ResourceDocument::entries() const {
     const auto size = project.data(resource).size();
+    if(resource=="SIGNS.DAT") {
+        QVector<Entry> result;
+        int offset = 66;
+        for (const auto &sign : readSigns(project.data(resource))) {
+            result.append(
+                {QString("sign/%1/%2/%3/%4").arg(sign.map).arg(sign.floor).arg(sign.x).arg(sign.y),
+                 QString("Sign at (%1,%2), floor %3").arg(sign.x).arg(sign.y).arg(sign.floor),
+                 offset, 5 + sign.text.size()});
+            offset += 5 + sign.text.size();
+        }
+        return result;
+    }
+    if (resource == "LOOK2.DAT") {
+        QVector<Entry> result;
+        for (int i = 0; i < 512; i++) {
+            auto text = description(project.data(resource), i);
+            result.append({QString("description/%1/%2").arg(i / 256).arg(i % 256),
+                           QString("%1 %2: %3")
+                               .arg(i < 256 ? "Terrain/object" : "Actor")
+                               .arg(i % 256)
+                               .arg(QString::fromLatin1(text)),
+                           U5::word(project.data(resource), i * 2), text.size() + 1});
+        }
+        return result;
+    }
     if (resource == "DUNGEON.DAT") {
         DungeonDocument document(&project);
         QVector<Entry> result;
@@ -103,6 +131,25 @@ QMap<QString, QByteArray> ResourceDocument::replace(const Entry &e, const QByteA
 void validateResource(const Project &project, const QString &name) {
     const auto &b = project.data(name);
     const auto kind = capability(name).editor;
+    if (kind == EditorKind::LocationText) {
+        if (name == "SIGNS.DAT") {
+            const QStringList maps = {"TOWNE.DAT", "DWELLING.DAT", "CASTLE.DAT", "KEEP.DAT"};
+            for (const auto &r : readSigns(b)) {
+                if (r.map == 0)
+                    continue;
+                QString map = maps[(r.map - 1) / 8];
+                require(project.resources.contains(map), "Sign refers to an absent location map");
+                bool found = false;
+                for (const auto &page : U5::mapPages(map, project.data(map)))
+                    if (page.settlement == (r.map - 1) % 8 && page.floor == r.floor)
+                        found = true;
+                require(found, "Sign refers to a floor absent from its location");
+            }
+        } else
+            for (int i = 0; i < 512; i++)
+                description(b, i);
+        return;
+    }
     if (kind == EditorKind::Dungeon) {
         DungeonDocument::validate(project);
         return;

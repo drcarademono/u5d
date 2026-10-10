@@ -1,5 +1,6 @@
 #include "common/common.h"
 #include "common/movement.h"
+#include "common/signs.h"
 #include "funcs.h"
 #include "vars.h"
 #include "macros.h"
@@ -20,7 +21,13 @@ static void LOOKOBJ_0000(int param_1)
 
     local_4 = 0;
     ULTIMA_256e_ReadFileFromDisk(/*0x71f8*/ "LOOK2.DAT", &local_4, 2, param_1 << 1);
+#if !defined(MATCHING_BUILD)
+    memset(local_84, 0, sizeof(local_84));
+#endif
     ULTIMA_256e_ReadFileFromDisk(/*0x7202*/ "LOOK2.DAT", local_84, 0x80, local_4);
+#if !defined(MATCHING_BUILD)
+    local_84[sizeof(local_84) - 1] = 0;
+#endif
     ULTIMA_1850_PrintString(local_84);
 }
 
@@ -419,7 +426,13 @@ static void LOOKOBJ_06a4(int param_1)
     // NOTE: FMT does some other things here
 
     ULTIMA_256e_ReadFileFromDisk(/*0x7374*/ "LOOK2.DAT", &local_4, 2, param_1 * 2 + 0x200);
+#if !defined(MATCHING_BUILD)
+    memset(local_84, 0, sizeof(local_84));
+#endif
     ULTIMA_256e_ReadFileFromDisk(/*0x737e*/ "LOOK2.DAT", local_84, 0x80, local_4);
+#if !defined(MATCHING_BUILD)
+    local_84[sizeof(local_84) - 1] = 0;
+#endif
 
     ULTIMA_1850_PrintString(local_84);
 
@@ -443,12 +456,21 @@ static void LOOKOBJ_06f8(int param_1)
     }
     else
     {
+#if !defined(MATCHING_BUILD)
+        for (param_1 = param_1 + 4; param_1 + 6 < SCRATCH_SIZE &&
+             D_b21e[param_1] == '\n'; param_1 += 6)
+#else
         for (param_1 = param_1 + 4; D_b21e[param_1] == '\n'; param_1 += 6)
+#endif
         {
         }
 
         do
         {
+#if !defined(MATCHING_BUILD)
+            if (param_1 >= SCRATCH_SIZE || D_b21e[param_1] == 0)
+                break;
+#endif
             local_6 = D_b21e[param_1];
             if (local_6 & 0x80)
             {
@@ -480,7 +502,11 @@ static void LOOKOBJ_06f8(int param_1)
             {
                 ULTIMA_16ba_PrintChar(local_6 & 0x7f);
             }
+#if !defined(MATCHING_BUILD)
+        } while (++param_1 < SCRATCH_SIZE && D_b21e[param_1] != 0);
+#else
         } while (D_b21e[++param_1] != 0);
+#endif
 
         ULTIMA_1c9e_SelectCharset(0);
 
@@ -533,6 +559,14 @@ static void LOOKOBJ_07e4(byte param_1, byte param_2, byte param_3)
     }
     else
     {
+#if !defined(MATCHING_BUILD)
+        if (D_5893_map_id >= 33)
+        {
+            LOOKOBJ_06f8(-1);
+            return;
+        }
+        memset(local_48, 0, sizeof(local_48));
+#endif
         ULTIMA_256e_ReadFileFromDisk(/*0x74e6*/ "SIGNS.DAT", local_48, 0x42, 0);
         local_6 = local_48[D_5893_map_id];
         memset(D_b21e, 0xff, SCRATCH_SIZE);
@@ -544,6 +578,11 @@ static void LOOKOBJ_07e4(byte param_1, byte param_2, byte param_3)
         else
         {
             ULTIMA_256e_ReadFileFromDisk(/*0x74f0*/ "SIGNS.DAT", D_b21e, SCRATCH_SIZE, local_6);
+#if !defined(MATCHING_BUILD)
+            local_6 = U5_FindSign(D_b21e, SCRATCH_SIZE, D_5893_map_id,
+                                 param_1, param_2, param_3);
+            LOOKOBJ_06f8(local_6);
+#else
             local_6 = 0;
             // di = local_4
             // si = local_6
@@ -557,21 +596,12 @@ static void LOOKOBJ_07e4(byte param_1, byte param_2, byte param_3)
                 else
                 {
                     local_6 += 4;
-#if !defined(MATCHING_BUILD)
-                    for (; local_6 < SCRATCH_SIZE; )
-                    {
-                        if (D_b21e[local_6++] == 0)
-                            break;
-                    }
-
-                    local_4 = local_6 == SCRATCH_SIZE;
-#else
                     while (D_b21e[local_6++] != 0)
                     {
                     }
 
                     local_4 = D_b21e[local_6] == 0xff ? 1 : 0;
-#endif
+
 
                     if (local_4)
                     {
@@ -579,6 +609,7 @@ static void LOOKOBJ_07e4(byte param_1, byte param_2, byte param_3)
                     }
                 }
             } while (local_4 == 0);
+#endif
         }
     }
 }

@@ -35,3 +35,10 @@ int WorkshopEngineDecode(const void *input, size_t size, void **result, unsigned
     *length = decoded;
     return ok;
 }
+
+#include "common/signs.h"
+int WorkshopEngineFindSign(const unsigned char *bytes, unsigned size,
+                          unsigned map, unsigned floor, unsigned x, unsigned y)
+{
+    return U5_FindSign(bytes, size, map, floor, x, y);
+}

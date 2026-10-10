@@ -1,6 +1,7 @@
 #include "window.h"
 #include "dialogue_editor.h"
 #include "dungeon_editor.h"
+#include "location_text.h"
 #include "mod/package.h"
 #include "resource_document.h"
 #include "text_preview.h"
@@ -577,7 +578,20 @@ QWidget *WorkshopWindow::resourceEditor(const QString &name) {
         if (action->text() == "Resource Library")
             action->setChecked(!name.endsWith(".TLK") && !MapDocument::supported(name));
     const auto kind = Workshop::capability(name).editor;
-    if (kind == Workshop::EditorKind::Dungeon) {
+    if (kind == Workshop::EditorKind::LocationText) {
+        editor = Workshop::locationTextEditor(
+            &project, name,
+            [this](const QMap<QString, QByteArray> &changes, const QString &title) {
+                return guard([&] {
+                    Project candidate = project;
+                    for (auto it = changes.begin(); it != changes.end(); ++it)
+                        candidate.resources[it.key()].edited = it.value();
+                    candidate.validate();
+                    edit(changes, title);
+                });
+            },
+            &editorState, &flushDraft);
+    } else if (kind == Workshop::EditorKind::Dungeon) {
         auto workspace = new Workshop::DungeonWorkspace(
             &project, &editorState,
             [this](const QMap<QString, QByteArray> &changes, const QString &description) {
@@ -649,6 +663,28 @@ QWidget *WorkshopWindow::mapEditor(const QString &name) {
             return guard([&] { edit(changes, description); });
         },
         [this](const QString &resource) { selectResource(resource); }, &mapBrushes);
+    if (project.resources.contains("SIGNS.DAT") && QStringList{"TOWNE.DAT","DWELLING.DAT","CASTLE.DAT","KEEP.DAT"}.contains(name)) {
+        auto signs = new QPushButton("Signs layer", workspace);
+        signs->setObjectName("openSignsLayer");
+        signs->setToolTip(
+            "Inspect and edit sign text on this location floor without changing terrain.");
+        workspace->layout()->addWidget(signs);
+        connect(signs, &QPushButton::clicked, this, [this, name] {
+            int target = project.resources.contains("BRIT.DAT") ? 1 : 0;
+            QStringList maps = {"TOWNE.DAT", "DWELLING.DAT", "CASTLE.DAT", "KEEP.DAT"};
+            for (const auto &map : maps) {
+                if (!project.resources.contains(map))
+                    continue;
+                if (map == name) {
+                    target += editorState.value(name + "/map");
+                    break;
+                }
+                target += U5::mapPages(map, project.data(map)).size();
+            }
+            editorState["SIGNS.DAT/page"] = target;
+            selectResource("SIGNS.DAT");
+        });
+    }
     flushDraft = [workspace] {
         workspace->cancelGesture();
         return true;

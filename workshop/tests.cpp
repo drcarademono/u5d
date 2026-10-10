@@ -1,6 +1,7 @@
 #include "dialogue.h"
 #include "dialogue_editor.h"
 #include "dungeon_editor.h"
+#include "location_text.h"
 #include "mod/package.h"
 #include "mod/world_resources.h"
 #include "resource_document.h"
@@ -13,6 +14,7 @@
 #include <iostream>
 #include <limits>
 #include <random>
+extern "C" int WorkshopEngineFindSign(const unsigned char *, unsigned, unsigned, unsigned, unsigned, unsigned);
 extern "C" int WorkshopEngineDungeonRoom(int, unsigned char);
 extern "C" int WorkshopEngineMatch(const unsigned char *, char *);
 extern "C" int WorkshopEngineDecode(const void *, size_t, void **, unsigned *);
@@ -57,6 +59,166 @@ int main(int argc, char **argv) {
         std::cout << "PASS " << name << "\n";
     };
     try {
+        test("Sign codec preserves glyphs, locations and unknown trailer", [] {
+            QByteArray seed(66, 0);
+            seed += char(255);
+            seed += char(255);
+            seed += "opaque trailer";
+            QVector<Workshop::SignRecord> records = {
+                {4, 0, 3, 4, Workshop::encodeSign("Normal [runes]LOVE[/runes]\n[byte:29]")},
+                {17, -1, 6, 13, QByteArray("Runes")}};
+            auto bytes = Workshop::writeSigns(seed, records);
+            check(Workshop::readSigns(bytes) == records, "Sign records changed");
+            check(Workshop::writeSigns(bytes, Workshop::readSigns(bytes)) == bytes,
+                  "No-op signs changed");
+            check(bytes.endsWith("opaque trailer"), "Unknown signs trailer lost");
+            const auto *data = reinterpret_cast<const unsigned char *>(bytes.constData() + 66);
+            unsigned length = bytes.size() - 66;
+            check(WorkshopEngineFindSign(data, length, 4, 0, 3, 4) == 0,
+                  "Engine did not find authored sign");
+            check(WorkshopEngineFindSign(data, length, 4, 255, 6, 13) == -1,
+                  "Engine crossed into another map");
+            check(WorkshopEngineFindSign(data, 4, 4, 0, 3, 4) == -1,
+                  "Engine accepted truncated header");
+            unsigned char broken[] = {4, 0, 3, 4, 'x'};
+            check(WorkshopEngineFindSign(broken, 5, 4, 0, 3, 4) == -1,
+                  "Engine accepted unterminated text");
+            for (const auto &r : records)
+                check(Workshop::encodeSign(Workshop::signSource(r.text)) == r.text,
+                      "Sign charset roundtrip");
+            auto bad = bytes;
+            bad[8] = char(1);
+            rejects([&] { Workshop::readSigns(bad); });
+            rejects([&] { Workshop::readSigns(QByteArray(65, 0)); });
+            rejects([&] { Workshop::encodeSign("[runes]unterminated"); });
+            rejects([&] { Workshop::writeSigns(seed, {{4, 0, 17, 21, "ignored"}}); });
+            rejects([&] { Workshop::writeSigns(seed, {{33, 0, 1, 1, "invalid map"}}); });
+            rejects([&] { Workshop::writeSigns(seed, {{1, 0, -1, 1, "invalid cell"}}); });
+            rejects([&] { Workshop::writeSigns(seed, {{1, 0, 1, 1, QByteArray(3000, 'A')}}); });
+        });
+        test("Description pointer aliases detach unless explicitly linked", [] {
+            QByteArray bytes(1024, 0);
+            for (int i = 0; i < 512; i++)
+                bytes[i * 2 + 1] = 4;
+            bytes += "shared";
+            bytes += '\0';
+            auto changed = Workshop::changeDescription(bytes, 7, "Independent", false);
+            check(Workshop::description(changed, 7) == "Independent", "Description not changed");
+            check(Workshop::description(changed, 8) == "shared",
+                  "Shared description unexpectedly changed");
+            check(changed.left(14) == bytes.left(14), "Unrelated description pointers changed");
+            check(Workshop::changeDescription(bytes, 7, "shared", false) == bytes,
+                  "No-op descriptions changed");
+            auto linked = Workshop::changeDescription(bytes, 7, "All linked", true);
+            for (int i = 0; i < 512; i++)
+                check(Workshop::description(linked, i) == "All linked", "Linked text not updated");
+            rejects([&] { Workshop::changeDescription(bytes, 7, QString(128, 'a'), false); });
+            rejects([&] { Workshop::description(QByteArray(1024, 0), 0); });
+            rejects([&] { Workshop::description(bytes.left(bytes.size() - 1), 0); });
+        });
+        test("Location text project export, undo and floor navigation", [&] {
+            QTemporaryDir dir;
+            fixture(dir.path());
+            file(dir.path() + "/TOWNE.DAT", QByteArray(16384, char(0xf8)));
+            file(dir.path() + "/IBM.CH", QByteArray(1024, char(255)));
+            file(dir.path() + "/RUNES.CH", QByteArray(1024, char(255)));
+            QByteArray seed(66, 0);
+            seed += char(255);
+            seed += char(255);
+            auto signs =
+                Workshop::writeSigns(seed, {{1, 0, 2, 3, Workshop::encodeSign("Original")}});
+            file(dir.path() + "/SIGNS.DAT", signs);
+            QByteArray looks(1024, 0);
+            for (int i = 0; i < 512; i++)
+                looks[i * 2 + 1] = 4;
+            looks += "a sign";
+            looks += '\0';
+            file(dir.path() + "/LOOK2.DAT", looks);
+            WorkshopWindow w;
+            check(w.openGame(dir.path()), "Text fixture load failed");
+            w.selectResource("SIGNS.DAT");
+            app.processEvents();
+            auto floor = w.findChild<QComboBox *>("signFloor");
+            check(floor && floor->count() == 2, "Sign floors include other locations");
+            auto draft = w.findChild<QPlainTextEdit *>("locationTextDraft");
+            draft->setPlainText("Changed [runes]LOVE[/runes]");
+            for (auto button : w.findChildren<QPushButton *>())
+                if (button->text() == "Apply text")
+                    button->click();
+            auto changed = w.projectForTests().data("SIGNS.DAT");
+            check(changed != signs, "Synthetic sign edit failed");
+            w.projectForTests().save(dir.path() + "/text.imperaproject");
+            Project reopened;
+            reopened.load(dir.path() + "/text.imperaproject");
+            check(reopened.data("SIGNS.DAT") == changed, "Text project did not reopen");
+            auto package = reopened.package();
+            Project imported;
+            imported.openGame(dir.path());
+            imported.importPackage(package);
+            check(imported.data("SIGNS.DAT") == changed, "Text package did not import");
+            for (auto action : w.findChildren<QAction *>())
+                if (action->text().startsWith("Undo"))
+                    action->trigger();
+            app.processEvents();
+            check(w.projectForTests().data("SIGNS.DAT") == signs, "Sign undo failed");
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            w.selectResource("LOOK2.DAT");
+            app.processEvents();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            draft = w.findChild<QPlainTextEdit *>("locationTextDraft");
+            check(draft->toPlainText()=="a sign","Initial description was not displayed");
+            draft->selectAll();
+            draft->insertPlainText("Unsaved draft");
+            w.selectResource("SIGNS.DAT");
+            check(Workshop::description(w.projectForTests().data("LOOK2.DAT"), 0) ==
+                      "Unsaved draft",
+                  "Resource navigation lost description draft");
+            auto bad =
+                Workshop::writeSigns(seed, {{1, 3, 2, 3, Workshop::encodeSign("Missing floor")}});
+            imported.resources["SIGNS.DAT"].edited = bad;
+            rejects([&] { imported.validate(); });
+        });
+        test("Location text original resources and native editors (optional)", [&] {
+            auto directory = qEnvironmentVariable("U5_GAME_DIR");
+            if (directory.isEmpty())
+                return;
+            Project p;
+            p.openGame(directory);
+            auto signs = p.data("SIGNS.DAT");
+            auto records = Workshop::readSigns(signs);
+            check(Workshop::writeSigns(signs, records) == signs, "Original signs changed");
+            for (const auto &r : records)
+                check(Workshop::encodeSign(Workshop::signSource(r.text)) == r.text,
+                      "Original sign encoding changed");
+            for (int i = 0; i < 512; i++)
+                Workshop::description(p.data("LOOK2.DAT"), i);
+            WorkshopWindow w;
+            check(w.openGame(directory), "Location text window load failed");
+            w.selectResource("SIGNS.DAT");
+            app.processEvents();
+            auto entries = w.findChild<QListWidget *>("locationTextEntries");
+            check(entries && entries->count() > 0, "Sign list missing");
+            auto draft = w.findChild<QPlainTextEdit *>("locationTextDraft");
+            check(draft, "Sign editor missing");
+            draft->setPlainText("Edited sign");
+            for (auto button : w.findChildren<QPushButton *>())
+                if (button->text() == "Apply text")
+                    button->click();
+            check(w.projectForTests().changed().contains("SIGNS.DAT"), "Sign UI did not commit");
+            w.selectResource("LOOK2.DAT");
+            app.processEvents();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            entries = w.findChild<QListWidget *>("locationTextEntries");
+            check(entries && entries->count() == 512, "Descriptions list missing entries");
+            draft = w.findChild<QPlainTextEdit *>("locationTextDraft");
+            draft->setPlainText("a test description");
+            for (auto button : w.findChildren<QPushButton *>())
+                if (button->text() == "Apply text")
+                    button->click();
+            check(Workshop::description(w.projectForTests().data("LOOK2.DAT"), 0) ==
+                      "a test description",
+                  "Description UI did not commit");
+        });
         test("Dungeon codec, feature validation and engine room mapping", [] {
             QTemporaryDir dir;
             auto p = fixture(dir.path());
