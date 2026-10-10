@@ -85,13 +85,12 @@ use edited project artwork from `TILES.16`; only terrain IDs 0–255 are paintab
 - Wheel scrolls vertically; **Shift+wheel** scrolls horizontally. Scrollbars remain available.
 - Choose **Fit** for the whole map, or an integer zoom for detailed work. Fit uses crisp nearest-neighbor rendering.
 - **Escape** or focus loss cancels the entire pending stroke. A failed edit rolls back its preview.
-- **Go** centers the entered X/Y cell. Grid, brush, zoom, tool, schedule slot and view center are remembered separately per map page during the session, including across undo/redo.
+- **Go** centers the entered X/Y cell. Brush, zoom, tool, schedule slot and view center are remembered separately per map page during the session, including across undo/redo.
 - **Back to map** returns from other resource editors without losing map navigation.
 - **Export** distinguishes terrain PNG from tile-ID PNG; NPC overlays are excluded.
 
 Terrain tools are map-local: **V** selects a rectangle, **R** paints a rectangle,
-and **F** fills four-connected cells of the clicked tile ID. Toggle **Rectangle
-outline** for an outline instead of a solid rectangle. A selection constrains
+and **F** fills four-connected cells of the clicked tile ID. A selection constrains
 Pencil, Rectangle and Fill; **Escape** clears it when no gesture is pending.
 Selection bounds and dimensions appear beside the map.
 
@@ -273,3 +272,6 @@ Folder** when you actually want to select a different installation.
 
 See [the implementation plan](../docs/workshop-map-ui.md) for the isolation and
 validation contracts.
+
+Copy, Paste, Clear Selection, and Highlight Changes share the tool icon row.
+Zoom sits beside the tool icons; Grid and Rectangle Outline controls are removed.

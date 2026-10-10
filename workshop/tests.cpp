@@ -612,7 +612,7 @@ int main(int argc, char **argv) {
             };
             auto palette = active()->findChild<QListWidget *>("mapPalette");
             palette->setCurrentRow(9);
-            active()->findChild<QCheckBox *>("mapGrid")->setChecked(true);
+
             active()->findChild<QComboBox *>("mapZoom")->setCurrentIndex(4);
             auto view = dynamic_cast<MapView *>(active()->findChild<QScrollArea *>("canvasView"));
             view->centerMap({12, 13});
@@ -641,7 +641,7 @@ int main(int argc, char **argv) {
             canvas = findCanvas();
             view = dynamic_cast<MapView *>(active()->findChild<QScrollArea *>("canvasView"));
             check(canvas->selection == QRect(0, 0, 3, 3) && canvas->comparison &&
-                      canvas->brush == 9 && canvas->grid && canvas->zoom == 4 &&
+                      canvas->brush == 9 && !canvas->grid && canvas->zoom == 4 &&
                       QLineF(center, view->mapCenter()).length() < 0.1,
                   "Undo reset view settings");
             check(w.projectForTests().data("TOWNE.DAT") == QByteArray(16384, 0),
@@ -702,7 +702,7 @@ int main(int argc, char **argv) {
             check(back, "Linked workspace lacks return to map");
             back->click();
             app.processEvents();
-            check(findCanvas()->grid && findCanvas()->zoom == 4 && findCanvas()->brush == 0,
+            check(!findCanvas()->grid && findCanvas()->zoom == 4 && findCanvas()->brush == 0,
                   "Return to map lost view state");
             check(w.projectForTests().changed().isEmpty(),
                   "Navigation or view settings changed resources");
@@ -1345,6 +1345,17 @@ int main(int argc, char **argv) {
             check(qAbs(schedule->mapTo(&workspace, QPoint()).y() -
                        floors->mapTo(&workspace, QPoint()).y()) < 10,
                   "Schedule selector is not beside the floor selector");
+            check(!workspace.findChild<QCheckBox *>("mapGrid") &&
+                      !workspace.findChild<QCheckBox *>("mapRectangleOutline"),
+                  "Removed map controls are still present");
+            for (const char *name : {"mapCopy", "mapPaste", "mapClearSelection", "mapComparison"}) {
+                auto control = workspace.findChild<QWidget *>(name);
+                check(control &&
+                          qAbs(control->mapTo(&workspace, QPoint()).y() -
+                               tools->button(MapCanvas::Pencil)->mapTo(&workspace, QPoint()).y()) <
+                              10,
+                      "Terrain action is not on the tool row");
+            }
             check(floors->count() == 2 && floors->findData(0) >= 0 && floors->findData(1) >= 0 &&
                       floors->findData(6) < 0,
                   "Floor selector includes other locations");

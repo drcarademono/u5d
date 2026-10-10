@@ -922,7 +922,7 @@ MapWorkspace::MapWorkspace(
         "Pan: drag to move the view without changing the map. Space or middle-drag also pans.",
         "Characters: select and move NPC destinations or encounter markers.",
         "Select (V): drag a rectangle to copy or replace terrain.",
-        "Rectangle (R): draw a filled rectangle, or an outline when enabled.",
+        "Rectangle (R): draw a filled rectangle with the current brush.",
         "Fill (F): replace connected tiles of the same kind with the current brush."};
     for (int i = 0; i < names.size(); ++i) {
         auto button = new QToolButton;
@@ -1005,15 +1005,6 @@ MapWorkspace::MapWorkspace(
     zoom->addItems({"Fit", "100%", "200%", "300%", "400%", "800%"});
     zoom->setToolTip(
         "Magnify tiles, or fit the whole map in the view. Ctrl+mouse wheel also zooms.");
-    grid = new QCheckBox("Grid");
-    grid->setObjectName("mapGrid");
-    grid->setToolTip("Show tile boundaries without changing the map.");
-    auto terrainTools = new QHBoxLayout;
-    auto displayTools = new QHBoxLayout;
-    auto outline = new QCheckBox("Rectangle outline");
-    outline->setToolTip("Draw only the border when using the Rectangle tool.");
-    outline->setObjectName("mapRectangleOutline");
-    displayTools->addWidget(outline);
     auto copy = new QPushButton("Copy");
     copy->setToolTip("Copy the selected rectangle of terrain (Ctrl+C).");
     copy->setObjectName("mapCopy");
@@ -1023,19 +1014,14 @@ MapWorkspace::MapWorkspace(
     auto clear = new QPushButton("Clear selection");
     clear->setToolTip("Remove the selection boundary without deleting terrain.");
     clear->setObjectName("mapClearSelection");
-    terrainTools->addWidget(copy);
-    terrainTools->addWidget(paste);
-    terrainTools->addWidget(clear);
+    tools->insertWidget(tools->count() - 1, copy);
+    tools->insertWidget(tools->count() - 1, paste);
+    tools->insertWidget(tools->count() - 1, clear);
     comparison = new QCheckBox("Highlight changes");
     comparison->setObjectName("mapComparison");
     comparison->setToolTip("Orange marks terrain that differs from original game files");
-    displayTools->addWidget(comparison);
-    terrainTools->addWidget(zoom);
-    terrainTools->addWidget(grid);
-    terrainTools->addStretch();
-    centerLayout->addLayout(terrainTools);
-    displayTools->addStretch();
-    centerLayout->addLayout(displayTools);
+    tools->insertWidget(tools->count() - 1, comparison);
+    tools->addWidget(zoom);
     canvas = new MapCanvas;
     canvas->tiles = U5::readGraphics("TILES.16", project->data("TILES.16")).images;
     view = new MapView(canvas);
@@ -1174,11 +1160,6 @@ MapWorkspace::MapWorkspace(
             brushes->favorites.append(id);
         filterPalette();
     });
-    connect(outline, &QCheckBox::toggled, this, [this](bool enabled) {
-        cancelGesture();
-        canvas->outline = enabled;
-        saveView();
-    });
     connect(copy, &QPushButton::clicked, this, [this] { canvas->copySelection(); });
     connect(paste, &QPushButton::clicked, this, [this] {
         canvas->setFocus();
@@ -1246,11 +1227,6 @@ MapWorkspace::MapWorkspace(
         findChild<QPushButton *>("mapPaste")->setEnabled(i != MapCanvas::InspectNpc);
         canvas->update();
         canvas->setCursor(i == 2 ? Qt::OpenHandCursor : Qt::CrossCursor);
-        saveView();
-    });
-    connect(grid, &QCheckBox::toggled, this, [=](bool on) {
-        canvas->grid = on;
-        canvas->update();
         saveView();
     });
     connect(schedule, &QComboBox::currentIndexChanged, this, [=] {
@@ -1459,23 +1435,14 @@ void MapWorkspace::loadPage() {
     canvas->keyboardCell = state.keyboardCell;
     canvas->selection = state.selection.intersected(QRect(0, 0, mp.side, mp.side));
     canvas->comparison = state.comparison;
-    canvas->outline = state.outline;
-    {
-        auto checkbox = findChild<QCheckBox *>("mapRectangleOutline");
-        QSignalBlocker block(checkbox);
-        checkbox->setChecked(state.outline);
-    }
+    canvas->outline = false;
     {
         QSignalBlocker block(comparison);
         comparison->setChecked(state.comparison);
     }
     canvas->zoom = state.zoom;
-    canvas->grid = state.grid;
+    canvas->grid = false;
     canvas->tool = qBound(0, state.tool, tool->buttons().size() - 1);
-    {
-        QSignalBlocker block(grid);
-        grid->setChecked(state.grid);
-    }
     {
         QSignalBlocker block(tool);
         tool->button(canvas->tool)->setChecked(true);

@@ -435,3 +435,7 @@ The inspector still shows that character’s exact start hour and shared destina
 Palette cells contain only tile artwork. Hover for the name, category, and ID;
 search still accepts names or numbers. Map navigation, view controls, terrain
 actions, NPC fields, and encounter controls include explanatory tooltips.
+
+The tool icon row also contains Copy, Paste, Clear Selection, Highlight
+Changes, and Zoom. Export remains beside the floor/schedule controls. Grid and Rectangle Outline
+are no longer UI options; rectangles are filled and the tile grid is hidden.
