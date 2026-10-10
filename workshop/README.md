@@ -283,3 +283,7 @@ Zoom sits beside the tool icons; Grid and Rectangle Outline controls are removed
 See the [Other Resources audit](../docs/workshop-other-resources-audit.md) for
 all 18 remaining resource files, proposed editors, and runtime compatibility
 limits affecting original DOS data tables and world-object state.
+
+The [resource editor implementation plan](../docs/workshop-resource-editors-plan.md)
+covers the proposed editors, user interface, runtime compatibility fixes and
+phase-by-phase acceptance checks.
