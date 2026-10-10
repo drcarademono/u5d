@@ -94,6 +94,48 @@ MapCanvas::MapCanvas(QWidget *parent) : QWidget(parent) {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
 }
+QIcon MapCanvas::toolIcon(int i) {
+    QPixmap icon(24, 24);
+    icon.fill(Qt::transparent);
+    QPainter painter(&icon);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setPen(QPen(QColor("#e0e8f0"), 2));
+    if (i == MapCanvas::Pencil) {
+        painter.drawLine(5, 19, 18, 6);
+        painter.drawLine(8, 21, 21, 8);
+        painter.drawLine(5, 19, 4, 22);
+        painter.drawLine(18, 6, 21, 8);
+    } else if (i == MapCanvas::Eyedropper) {
+        painter.drawLine(5, 19, 17, 7);
+        painter.drawLine(8, 21, 20, 9);
+        painter.drawLine(14, 5, 22, 13);
+        painter.drawLine(5, 19, 8, 21);
+    } else if (i == MapCanvas::Pan) {
+        painter.drawLine(12, 2, 12, 22);
+        painter.drawLine(2, 12, 22, 12);
+        painter.drawPolyline(QPolygon{{8, 6}, {12, 2}, {16, 6}});
+        painter.drawPolyline(QPolygon{{8, 18}, {12, 22}, {16, 18}});
+        painter.drawPolyline(QPolygon{{6, 8}, {2, 12}, {6, 16}});
+        painter.drawPolyline(QPolygon{{18, 8}, {22, 12}, {18, 16}});
+    } else if (i == MapCanvas::InspectNpc) {
+        painter.drawEllipse(8, 2, 8, 8);
+        painter.drawArc(4, 11, 16, 16, 0, 180 * 16);
+        painter.drawLine(4, 19, 20, 19);
+    } else if (i == MapCanvas::Select) {
+        painter.setPen(QPen(QColor("#e0e8f0"), 2, Qt::DashLine));
+        painter.drawRect(3, 3, 18, 18);
+    } else if (i == MapCanvas::Rectangle) {
+        painter.setBrush(QColor("#729ac4"));
+        painter.drawRect(3, 5, 18, 14);
+    } else {
+        painter.drawPolygon(QPolygon{{3, 12}, {12, 3}, {20, 11}, {11, 20}});
+        painter.drawLine(6, 12, 18, 12);
+        painter.setBrush(QColor("#729ac4"));
+        painter.drawEllipse(18, 17, 4, 5);
+    }
+    painter.end();
+    return QIcon(icon);
+}
 void MapCanvas::resizeMap() {
     setFixedSize(int(std::ceil(side * 16 * zoom)), int(std::ceil(side * 16 * zoom)));
     update();
@@ -457,7 +499,7 @@ bool MapCanvas::copySelection() {
     auto area = selection.intersected(QRect(0, 0, side, side));
     if (area != selection || ids.size() != side * side)
         return false;
-    QByteArray payload("IMPTILE1", 8);
+    QByteArray payload = clipboardMagic.toLatin1();
     for (int value : {area.width(), area.height()}) {
         payload.append(char(value & 255));
         payload.append(char(value >> 8));
@@ -465,7 +507,7 @@ bool MapCanvas::copySelection() {
     for (int y = area.top(); y <= area.bottom(); ++y)
         payload += ids.mid(y * side + area.left(), area.width());
     auto mime = new QMimeData;
-    mime->setData("application/x-impera-terrain", payload);
+    mime->setData(clipboardMime, payload);
     QApplication::clipboard()->setMimeData(mime);
     say(QString("Copied %1 × %2 terrain tiles; NPCs and combat records excluded")
             .arg(area.width())
@@ -479,8 +521,8 @@ bool MapCanvas::beginPaste() {
         return false;
     }
     auto mime = QApplication::clipboard()->mimeData();
-    auto payload = mime ? mime->data("application/x-impera-terrain") : QByteArray();
-    if (payload.size() < 12 || payload.left(8) != "IMPTILE1") {
+    auto payload = mime ? mime->data(clipboardMime) : QByteArray();
+    if (payload.size() < 12 || payload.left(8) != clipboardMagic.toLatin1()) {
         say("Clipboard does not contain Impera terrain tiles");
         return false;
     }
@@ -933,46 +975,7 @@ MapWorkspace::MapWorkspace(
         button->setStyleSheet("QToolButton:checked { background:#365f8d; border:2px solid #86b9ed; "
                               "border-radius:3px; }");
         button->setIconSize({22, 22});
-        QPixmap icon(24, 24);
-        icon.fill(Qt::transparent);
-        QPainter painter(&icon);
-        painter.setRenderHint(QPainter::Antialiasing);
-        painter.setPen(QPen(QColor("#e0e8f0"), 2));
-        if (i == MapCanvas::Pencil) {
-            painter.drawLine(5, 19, 18, 6);
-            painter.drawLine(8, 21, 21, 8);
-            painter.drawLine(5, 19, 4, 22);
-            painter.drawLine(18, 6, 21, 8);
-        } else if (i == MapCanvas::Eyedropper) {
-            painter.drawLine(5, 19, 17, 7);
-            painter.drawLine(8, 21, 20, 9);
-            painter.drawLine(14, 5, 22, 13);
-            painter.drawLine(5, 19, 8, 21);
-        } else if (i == MapCanvas::Pan) {
-            painter.drawLine(12, 2, 12, 22);
-            painter.drawLine(2, 12, 22, 12);
-            painter.drawPolyline(QPolygon{{8, 6}, {12, 2}, {16, 6}});
-            painter.drawPolyline(QPolygon{{8, 18}, {12, 22}, {16, 18}});
-            painter.drawPolyline(QPolygon{{6, 8}, {2, 12}, {6, 16}});
-            painter.drawPolyline(QPolygon{{18, 8}, {22, 12}, {18, 16}});
-        } else if (i == MapCanvas::InspectNpc) {
-            painter.drawEllipse(8, 2, 8, 8);
-            painter.drawArc(4, 11, 16, 16, 0, 180 * 16);
-            painter.drawLine(4, 19, 20, 19);
-        } else if (i == MapCanvas::Select) {
-            painter.setPen(QPen(QColor("#e0e8f0"), 2, Qt::DashLine));
-            painter.drawRect(3, 3, 18, 18);
-        } else if (i == MapCanvas::Rectangle) {
-            painter.setBrush(QColor("#729ac4"));
-            painter.drawRect(3, 5, 18, 14);
-        } else {
-            painter.drawPolygon(QPolygon{{3, 12}, {12, 3}, {20, 11}, {11, 20}});
-            painter.drawLine(6, 12, 18, 12);
-            painter.setBrush(QColor("#729ac4"));
-            painter.drawEllipse(18, 17, 4, 5);
-        }
-        painter.end();
-        button->setIcon(QIcon(icon));
+        button->setIcon(MapCanvas::toolIcon(i));
         tool->addButton(button, i);
         if (i == MapCanvas::InspectNpc && !project->resources.contains(companion) &&
             !resource.endsWith(".CBT")) {

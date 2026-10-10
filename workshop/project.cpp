@@ -1,8 +1,9 @@
-#include "resource_document.h"
 #include "project.h"
 #include "dialogue.h"
+#include "dungeon_editor.h"
 #include "mod/package.h"
 #include "mod/world_resources.h"
+#include "resource_document.h"
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
@@ -389,6 +390,43 @@ QVector<ModDiagnostic> validateMod(const Project &project) {
             result.append({ModDiagnostic::Error,
                            {},
                            "Package verification: " + QString::fromUtf8(error.what())});
+        }
+    }
+    if (changes.contains("DUNGEON.DAT")) {
+        try {
+            Workshop::DungeonDocument dungeon(&project);
+            for (int d = 0; d < 8; ++d)
+                for (int f = 0; f < 8; ++f)
+                    for (int y = 0; y < 8; ++y)
+                        for (int x = 0; x < 8; ++x) {
+                            auto changedCell = [&](int level) {
+                                const int at =
+                                    Workshop::DungeonDocument::offset(d, level) + y * 8 + x;
+                                return at >= project.resources["DUNGEON.DAT"].original.size() ||
+                                       project.resources["DUNGEON.DAT"].original[at] !=
+                                           project.data("DUNGEON.DAT")[at];
+                            };
+                            if (!changedCell(f) && !(f > 0 && changedCell(f - 1)) &&
+                                !(f < 7 && changedCell(f + 1)))
+                                continue;
+                            for (auto warning : dungeon.warnings(d, f, x, y))
+                                result.append({ModDiagnostic::Warning, "DUNGEON.DAT",
+                                               QString("Dungeon %1 · Level %2 · X %3 Y %4: %5")
+                                                   .arg(d + 1)
+                                                   .arg(f + 1)
+                                                   .arg(x)
+                                                   .arg(y)
+                                                   .arg(warning),
+                                               QString("dungeon/%1/level/%2/cell/%3")
+                                                   .arg(d)
+                                                   .arg(f)
+                                                   .arg(y * 8 + x)});
+                        }
+            result.append({ModDiagnostic::Information, "DUNGEON.DAT",
+                           "Already-loaded dungeon layouts in saves may retain their old cells. "
+                           "Re-enter the dungeon to load the package layout."});
+        } catch (
+            const std::exception &) { /* The main validation pass already reports malformed data. */
         }
     }
     return result;

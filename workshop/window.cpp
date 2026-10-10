@@ -1,8 +1,9 @@
-#include "text_preview.h"
-#include "resource_document.h"
 #include "window.h"
 #include "dialogue_editor.h"
+#include "dungeon_editor.h"
 #include "mod/package.h"
+#include "resource_document.h"
+#include "text_preview.h"
 #include <QMouseEvent>
 #include <QPainter>
 #include <QtWidgets>
@@ -514,6 +515,8 @@ void WorkshopWindow::selectResource(const QString &name) {
     }
     flushDraft = {};
     current = name;
+    if (name != "DUNGEON.CBT")
+        dungeonRoomNavigation = false;
     if (MapDocument::supported(name))
         lastMap = name;
     rebuildEditor();
@@ -562,12 +565,41 @@ QWidget *WorkshopWindow::resourceEditor(const QString &name) {
         tabs->setCornerWidget(back);
         connect(back, &QPushButton::clicked, this, [this] { selectResource(lastMap); });
     }
+    if (name == "DUNGEON.CBT" && dungeonRoomNavigation) {
+        auto back = new QPushButton("Back to dungeon");
+        back->setObjectName("backToDungeon");
+        back->setToolTip("Return to the dungeon level and cell that opened this room.");
+        tabs->setCornerWidget(back);
+        connect(back, &QPushButton::clicked, this, [this] { selectResource("DUNGEON.DAT"); });
+    }
     QWidget *editor = nullptr;
     for (auto action : menuBar()->actions())
         if (action->text() == "Resource Library")
             action->setChecked(!name.endsWith(".TLK") && !MapDocument::supported(name));
     const auto kind = Workshop::capability(name).editor;
-    if (kind == Workshop::EditorKind::Artwork)
+    if (kind == Workshop::EditorKind::Dungeon) {
+        auto workspace = new Workshop::DungeonWorkspace(
+            &project, &editorState,
+            [this](const QMap<QString, QByteArray> &changes, const QString &description) {
+                return guard([&] {
+                    Project candidate = project;
+                    for (auto it = changes.begin(); it != changes.end(); ++it)
+                        candidate.resources[it.key()].edited = it.value();
+                    candidate.validate();
+                    edit(changes, description);
+                });
+            },
+            [this](int room) {
+                editorState["DUNGEON.CBT/map"] = room;
+                dungeonRoomNavigation = true;
+                selectResource("DUNGEON.CBT");
+            });
+        flushDraft = [workspace] {
+            workspace->canvas->cancelStroke();
+            return true;
+        };
+        editor = workspace;
+    } else if (kind == Workshop::EditorKind::Artwork)
         editor = graphicsEditor(name);
     else if (kind == Workshop::EditorKind::Conversation)
         editor = dialogueEditor(name);
@@ -1360,6 +1392,16 @@ bool WorkshopWindow::reviewPackage(bool launch) {
     connect(report, &QTreeWidget::itemDoubleClicked, &dialog,
             [this, &dialog](QTreeWidgetItem *item) {
                 if (project.resources.contains(item->data(0, Qt::UserRole).toString())) {
+                    if (item->data(0, Qt::UserRole).toString() == "DUNGEON.DAT") {
+                        auto parts = item->data(0, Qt::UserRole + 1).toString().split('/');
+                        if (parts.size() == 6 && parts[0] == "dungeon" && parts[2] == "level" &&
+                            parts[4] == "cell") {
+                            editorState["DUNGEON.DAT/dungeon"] = parts[1].toInt();
+                            editorState["DUNGEON.DAT/level"] = parts[3].toInt();
+                            editorState["DUNGEON.DAT/x"] = parts[5].toInt() % 8;
+                            editorState["DUNGEON.DAT/y"] = parts[5].toInt() / 8;
+                        }
+                    }
                     selectResource(item->data(0, Qt::UserRole).toString());
                     dialog.reject();
                 }

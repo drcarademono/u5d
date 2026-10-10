@@ -27,6 +27,7 @@ class WorkshopWindow : public QMainWindow {
     QLabel *summary;
     QString current, savedTitle, lastMap;
     bool rebuildPending = false;
+    bool dungeonRoomNavigation = false;
     std::function<bool()> flushDraft;
     QMap<QString, int> editorState;
     QMap<QString, MapViewState> mapViewStates;

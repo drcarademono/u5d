@@ -64,6 +64,7 @@ drafts rather than silently discarding them. Package imports become undoable edi
 | Workspace | Available in this first version |
 | --- | --- |
 | Maps | Searchable world/settlement/combat navigation; continuous painting, synchronized eyedropper, hover/brush preview, pan, anchored zoom, fit view, coordinate navigation, per-map view restoration and per-stroke undo; terrain selection, solid/outline rectangles, bounded flood fill, typed copy/paste previews, minimap, favorite/recent brushes, original-change highlighting; terrain and tile-ID PNG exports |
+| Dungeons | Eight named dungeons with eight 8×8 levels; symbolic feature painting, variants, encounter-room links, floor stack, ladder warnings, undo and byte-preserving edits |
 | Settlement NPCs | NPC mode with actor selection, overlap chooser, drag previews and atomic moves; schedule inspector, signed floors, other-position ghosts, conversation links and advanced record editing |
 | Combat setup | Edit starting party positions for four directions, monster tiles/positions, triggers and changed-tile metadata; retain all padding/sentinel bytes |
 | Graphics | All DOS `.16` image containers and 512 tiles; thumbnail gallery, EGA pixel painting, PNG import/export, full tilesheet import/export, one-bit alpha masks |
@@ -307,3 +308,25 @@ characters are highlighted rather than converted silently. Proportional previews
 need the original `PROPORT.PCS` in the game directory; Workshop reads it without
 including it in a package. Font previews are approximate and do not reproduce full
 scene layout or expand format-specific control tokens.
+
+### Dungeon workspace
+
+Open **Dungeons** in the Resource Library's Maps group. Select a dungeon and
+Level 1–8; Level 1 is nearest the surface. Paint symbolic features with the shared
+Pencil, Rectangle or Fill tools, or use Select to copy a feature area. Right-click
+picks the full feature byte, including its variant. Dungeon selections cannot be
+pasted into ordinary terrain maps or vice versa.
+
+Choose a brush feature, then its variant: fountains can cure/heal/poison, fields
+can induce sleep or poison gas, and room doors select Room 1–16. Advanced variants
+preserve the original format's less common bits. **Apply brush to selected cell**
+configures the inspected position. The floor stack shows the same X/Y position on
+all eight levels; click a level to inspect it. Dungeon edges wrap.
+
+**Open combat room** opens the linked encounter map and setup editor.
+**Back to dungeon** restores the dungeon, level and cell. Deceit and Despise share
+a room bank in the original game; modifying a shared room affects both.
+
+Unmatched ladders are warnings. Missing combat rooms, truncated layouts and newly
+introduced impossible features block export. An already-loaded dungeon in a save
+can retain its old layout; leave and re-enter to load the package's layout.

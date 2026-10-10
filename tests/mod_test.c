@@ -139,6 +139,50 @@ static void worldResources(void) {
     const char *files[]={"game/BRIT.DAT","game/INIT.OOL","game/BRIT.OOL","game/UNDER.OOL"};
     for(unsigned i=0;i<4;++i) remove(files[i]);
 }
+static void dungeonResources(void) {
+    unsigned char base[4096], changed[4096], level[512], rooms[112 * 352], room[352];
+    memset(base, 0xb0, sizeof(base));
+    base[511] = 0x9a;
+    memcpy(changed, base, sizeof(base));
+    changed[1225] = 0x23;
+    changed[1226] = 0xa5;
+    memset(rooms, 0, sizeof(rooms));
+    rooms[(16 + 5) * 352] = 7;
+    put("game/DUNGEON.DAT", base, sizeof(base));
+    put("game/DUNGEON.CBT", rooms, sizeof(rooms));
+    Buffer package;
+    header(&package, 1);
+    rawEntry(&package, "DUNGEON.DAT", base, sizeof(base), changed, sizeof(changed));
+    put("game/Mods/dungeon.imperamod", package.bytes, package.size);
+    const char *exported = getenv("IMPERA_DUNGEON_TEST_PACKAGE");
+    if (exported) {
+        FILE *in = fopen(exported, "rb"), *out = fopen("game/Mods/dungeon.imperamod", "wb");
+        assert(in && out);
+        unsigned char bytes[4096];
+        size_t count;
+        while ((count = fread(bytes, 1, sizeof(bytes), in)))
+            assert(fwrite(bytes, 1, count, out) == count);
+        assert(!ferror(in));
+        assert(!fclose(in));
+        assert(!fclose(out));
+    }
+    FILE_SetDataDirectory("game");
+    assert(MOD_LoadedCount() == 1);
+    /* Same 512-byte block read as entering Destard in MAINOUT. */
+    assert(!FILE_ReadFile("DUNGEON.DAT", level, 512, 2 * 512));
+    assert(level[3 * 64 + 9] == 0x23 && level[3 * 64 + 10] == 0xa5);
+    assert(!FILE_ReadFile("DUNGEON.CBT", room, 352, (16 + 5) * 352));
+    assert(room[0] == 7);
+    assert(!FILE_ReadFile("DUNGEON.DAT", level, 512, 0));
+    assert(!memcmp(level, base, 512));
+    remove("game/Mods/dungeon.imperamod");
+    FILE_SetDataDirectory("game");
+    assert(!FILE_ReadFile("DUNGEON.DAT", level, 512, 2 * 512));
+    assert(!memcmp(level, base + 2 * 512, 512));
+    FILE_SetDataDirectory(NULL);
+    remove("game/DUNGEON.DAT");
+    remove("game/DUNGEON.CBT");
+}
 int main(void) {
     assert(MOD_AllowedResource("INIT.GAM"));
     assert(MOD_AllowedResource("BRIT.CBT"));
@@ -229,6 +273,7 @@ int main(void) {
     remove("game/Mods/04-invalid.IMPERAMOD");
     remove("SAVEGAME/INIT.GAM");
     worldResources();
+    dungeonResources();
     puts("Mod package validation, atomic mounting, order, conflicts, reloads and original preservation "
          "passed");
     return 0;

@@ -1,7 +1,7 @@
 #pragma once
 #include "project.h"
 namespace Workshop {
-enum class EditorKind { Artwork, Conversation, Schedule, State, Story, Map, Inspector };
+enum class EditorKind { Artwork, Conversation, Schedule, State, Story, Map, Dungeon, Inspector };
 struct Capability {
     QString title, group, status;
     EditorKind editor = EditorKind::Inspector;

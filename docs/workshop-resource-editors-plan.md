@@ -1,6 +1,6 @@
 # Workshop resource editors: implementation plan
 
-Status: Phases 1–2 implemented; Phases 3–9 remain proposals. Continue on `feature/native-modding` unless
+Status: Phases 1–3 implemented; Phases 4–9 remain proposals. Continue on `feature/native-modding` unless
 instructed otherwise. This extends the [Other Resources audit](workshop-other-resources-audit.md)
 and existing [map workspace plan](workshop-map-ui.md).
 
@@ -207,6 +207,33 @@ Acceptance: navigation and diagnostics resolve stable document/entry IDs; an
 unrecognized file remains inspectable; editing survives save/reopen and undo.
 
 ## Phase 3 — Dungeons (`DUNGEON.DAT`)
+
+Implemented: a dedicated dungeon workspace with engine-derived dungeon names,
+eight numbered levels, a symbolic 8×8 map, shared icon tools, flood fill, rectangles,
+selection/copy/paste and change highlighting. Dungeon-feature clipboard data is
+separate from ordinary terrain. Brush variants use named fountain/field/trap
+choices and human-numbered encounter rooms, retaining advanced encodings.
+
+The cell inspector and selectable floor stack explain vertical connections.
+Unpaired ladders and unusual values produce warnings; new impossible features,
+truncated data and missing room references block export. Shortening DUNGEON.CBT
+also checks existing dungeon references. Diagnostics navigate directly to their
+stable dungeon/level/cell IDs. Fixed-offset edits preserve all other cells and
+levels; unchanged unusual originals remain byte-identical.
+
+Open combat room follows the engine's room-bank calculation, including the shared
+Deceit/Despise bank. Back to dungeon restores the level and inspected cell. Existing
+saves can retain an already-loaded dungeon, so the workspace and package diagnostics
+explain that limitation. Re-entering loads the package layout.
+
+Validation includes synthetic codec and UI tests, unchanged round trips, project
+reopen, package export/import, undo, clipboard isolation, missing-room rejection,
+and comparison with the engine's extracted room-offset calculation. A
+Workshop-exported package is tested through the engine's 512-byte dungeon-block
+and 352-byte combat-room readers. This automated check verifies loading, not a
+complete interactive dungeon playthrough.
+
+Original phase requirements:
 
 UI: named dungeon and level selector, 8×8 symbolic map, feature palette, inspector,
 and compact floor stack showing vertical connections. Offer the existing pencil,

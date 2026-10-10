@@ -1,17 +1,19 @@
-#include <limits>
-#include "resource_document.h"
-#include "text_preview.h"
 #include "dialogue.h"
 #include "dialogue_editor.h"
+#include "dungeon_editor.h"
 #include "mod/package.h"
 #include "mod/world_resources.h"
+#include "resource_document.h"
+#include "text_preview.h"
 #include "window.h"
 #include <QTemporaryDir>
 #include <QtWidgets>
 #include <algorithm>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <random>
+extern "C" int WorkshopEngineDungeonRoom(int, unsigned char);
 extern "C" int WorkshopEngineMatch(const unsigned char *, char *);
 extern "C" int WorkshopEngineDecode(const void *, size_t, void **, unsigned *);
 static void check(bool ok, const char *message) {
@@ -55,6 +57,116 @@ int main(int argc, char **argv) {
         std::cout << "PASS " << name << "\n";
     };
     try {
+        test("Dungeon codec, feature validation and engine room mapping", [] {
+            QTemporaryDir dir;
+            auto p = fixture(dir.path());
+            QByteArray base(4096, char(0xb0));
+            base[511] = char(0x9a); // Unusual original encoding is preserved.
+            file(dir.path() + "/DUNGEON.DAT", base);
+            file(dir.path() + "/DUNGEON.CBT", QByteArray(112 * 352, 0));
+            p.openGame(dir.path());
+            Workshop::DungeonDocument document(&p);
+            check(document.changes(0, 0, document.level(0, 0))["DUNGEON.DAT"] == base,
+                  "No-op dungeon changed bytes");
+            for (int d = 0; d < 8; ++d)
+                for (int room = 0; room < 16; ++room)
+                    check(Workshop::DungeonDocument::roomIndex(d, 0xa0 | room) * 352 ==
+                              WorkshopEngineDungeonRoom(0x21 + d, 0xa0 | room),
+                          "Engine room mapping mismatch");
+            check(Workshop::DungeonDocument::roomIndex(1, 0xf3) == 3, "Despise room bank mismatch");
+            rejects([&] { document.level(8, 0); });
+            rejects([&] { document.level(0, 8); });
+            rejects([&] { document.changes(0, 0, QByteArray(63, 0)); });
+            auto level = document.level(2, 3);
+            level[9] = char(0x23);
+            level[10] = char(0xa5);
+            p.resources["DUNGEON.DAT"].edited = document.changes(2, 3, level)["DUNGEON.DAT"];
+            p.validate();
+            check(p.data("DUNGEON.DAT").left(1216) == base.left(1216) &&
+                      p.data("DUNGEON.DAT").mid(1280) == base.mid(1280),
+                  "Other dungeon levels changed");
+            check(!document.warnings(2, 3, 1, 1).isEmpty(), "Unpaired ladder not diagnosed");
+            check(document.level(2, 3)[10] == char(0xa5), "Room reference changed");
+            p.save(dir.path() + "/dungeon.imperaproject");
+            Project loaded;
+            loaded.load(dir.path() + "/dungeon.imperaproject");
+            check(loaded.data("DUNGEON.DAT") == p.data("DUNGEON.DAT"),
+                  "Dungeon project round trip failed");
+            auto package = p.package();
+            const auto exported = qEnvironmentVariable("IMPERA_DUNGEON_TEST_PACKAGE");
+            if (!exported.isEmpty())
+                file(exported, package);
+            p.resources["DUNGEON.DAT"].edited = base;
+            p.importPackage(package);
+            check(document.level(2, 3) == level, "Dungeon package round trip failed");
+            auto diagnostics = validateMod(p);
+            bool found = false;
+            for (auto diagnostic : diagnostics)
+                if (diagnostic.entryId == "dungeon/2/level/3/cell/9")
+                    found = true;
+            check(found, "Dungeon diagnostic lost stable cell ID");
+            p.resources["DUNGEON.DAT"].edited[0] = char(0x90);
+            rejects([&] { p.validate(); });
+            p.resources["DUNGEON.DAT"].edited = base;
+            p.resources["DUNGEON.DAT"].edited[0] = char(0xaf);
+            p.resources["DUNGEON.CBT"].edited.resize(352);
+            rejects([&] { p.validate(); });
+            p.resources["DUNGEON.DAT"].edited = base;
+            p.resources["DUNGEON.DAT"].edited[0] = p.resources["DUNGEON.DAT"].original[0] =
+                char(0xaf);
+            rejects([&] {
+                p.validate();
+            }); // Shrinking combat data also checks unchanged dungeon references.
+            p.resources["DUNGEON.DAT"].edited.resize(4095);
+            rejects([&] { Workshop::DungeonDocument invalid(&p); });
+        });
+        test("Dungeon UI edits, undo and room return", [] {
+            QTemporaryDir dir;
+            fixture(dir.path());
+            file(dir.path() + "/DUNGEON.DAT", QByteArray(4096, 0));
+            file(dir.path() + "/DUNGEON.CBT", QByteArray(112 * 352, 0));
+            WorkshopWindow window;
+            window.openGame(dir.path());
+            window.selectResource("DUNGEON.DAT");
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            auto canvas = dynamic_cast<MapCanvas *>(window.findChild<QWidget *>("dungeonCanvas"));
+            check(canvas, "Dungeon canvas missing");
+            canvas->selection = QRect(0, 0, 1, 1);
+            check(canvas->copySelection(), "Dungeon copy failed");
+            MapCanvas terrain;
+            terrain.side = 8;
+            terrain.ids = QByteArray(64, 0);
+            check(!terrain.beginPaste(), "Dungeon features accepted as terrain");
+            terrain.selection = QRect(0, 0, 1, 1);
+            check(terrain.copySelection(), "Terrain copy failed");
+            check(!canvas->beginPaste(), "Terrain accepted as dungeon features");
+            canvas->inspect(2, 3, 0);
+            auto palette = window.findChild<QListWidget *>("dungeonPalette");
+            for (int i = 0; i < palette->count(); ++i)
+                if (palette->item(i)->data(Qt::UserRole).toInt() == 0xa0)
+                    palette->setCurrentRow(i);
+            window.findChild<QComboBox *>("dungeonSubtype")->setCurrentIndex(3);
+            for (auto button : window.findChildren<QPushButton *>())
+                if (button->text() == "Apply brush to selected cell")
+                    button->click();
+            check(window.projectForTests().data("DUNGEON.DAT")[26] == char(0xa3),
+                  "Configured room not applied");
+            window.findChild<QPushButton *>("openDungeonRoom")->click();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            auto back = window.findChild<QPushButton *>("backToDungeon");
+            check(back, "Room return missing");
+            back->click();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            canvas = dynamic_cast<MapCanvas *>(window.findChild<QWidget *>("dungeonCanvas"));
+            check(canvas && canvas->keyboardCell == QPoint(2, 3), "Room return lost dungeon cell");
+            for (auto action : window.findChildren<QAction *>())
+                if (action->text().startsWith("Undo ")) {
+                    action->trigger();
+                    break;
+                }
+            QApplication::processEvents();
+            check(window.projectForTests().data("DUNGEON.DAT")[26] == 0, "Dungeon undo failed");
+        });
         test("Shared resource documents preserve bytes and stable identities", [] {
             QTemporaryDir dir;
             auto p = fixture(dir.path());

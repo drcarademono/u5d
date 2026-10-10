@@ -63,6 +63,8 @@ class MapCanvas : public QWidget {
     QString operation = "Paint";
     std::function<void()> changed, selectionChanged;
     std::function<void(const QString &)> feedback;
+    QString clipboardMime = "application/x-impera-terrain", clipboardMagic = "IMPTILE1";
+    static QIcon toolIcon(int tool);
     bool copySelection();
     bool beginPaste();
     bool pasting() const { return !stamp.isEmpty(); }

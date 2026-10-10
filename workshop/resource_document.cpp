@@ -1,5 +1,6 @@
 #include "resource_document.h"
 #include "dialogue.h"
+#include "dungeon_editor.h"
 #include "mod/world_resources.h"
 using U5::require;
 namespace Workshop {
@@ -15,6 +16,9 @@ Capability capability(const QString &resource) {
         return {"Starting state", "Starting state", "Applied to new games", EditorKind::State};
     if (n == "STORY.DAT")
         return {"Introduction story", "Story", "Editable fixed text windows", EditorKind::Story};
+    if (n == "DUNGEON.DAT")
+        return {"Dungeons", "Maps", "Editable dungeon features and room links",
+                EditorKind::Dungeon};
     if (n.endsWith(".CBT") ||
         QStringList{"BRIT.DAT", "UNDER.DAT", "TOWNE.DAT", "DWELLING.DAT", "KEEP.DAT", "CASTLE.DAT"}
             .contains(n))
@@ -55,6 +59,16 @@ ResourceDocument::ResourceDocument(const Project &p, QString r)
 }
 QVector<Entry> ResourceDocument::entries() const {
     const auto size = project.data(resource).size();
+    if (resource == "DUNGEON.DAT") {
+        DungeonDocument document(&project);
+        QVector<Entry> result;
+        for (int d = 0; d < 8; ++d)
+            for (int f = 0; f < 8; ++f)
+                result.append({QString("dungeon/%1/level/%2").arg(d).arg(f),
+                               QString("Dungeon %1 · Level %2").arg(d + 1).arg(f + 1),
+                               DungeonDocument::offset(d, f), 64});
+        return result;
+    }
     QVector<Entry> result;
     if (resource == "IBM.CH" || resource == "RUNES.CH") {
         require(size == 1024, "Font must contain 128 eight-byte glyphs");
@@ -89,6 +103,10 @@ QMap<QString, QByteArray> ResourceDocument::replace(const Entry &e, const QByteA
 void validateResource(const Project &project, const QString &name) {
     const auto &b = project.data(name);
     const auto kind = capability(name).editor;
+    if (kind == EditorKind::Dungeon) {
+        DungeonDocument::validate(project);
+        return;
+    }
     if (name == "IBM.CH" || name == "RUNES.CH") {
         require(b.size() == 1024, "Bitmap fonts must contain 128 eight-byte glyphs");
         return;
@@ -131,7 +149,10 @@ void validateResource(const Project &project, const QString &name) {
         U5::worldMap("BRIT.DAT", project.data("BRIT.DAT"), overlay);
     } else if (name == "UNDER.DAT")
         U5::worldMap(name, b, QByteArray());
-    else if (kind == EditorKind::Map)
+    else if (kind == EditorKind::Map) {
         U5::mapPages(name, b);
+        if (name == "DUNGEON.CBT" && project.resources.contains("DUNGEON.DAT"))
+            DungeonDocument::validate(project, true);
+    }
 }
 } // namespace Workshop
